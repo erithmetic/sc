@@ -1,0 +1,23 @@
+
+todo:
+1) autobackup of things typed in.
+	idea: each cell change output to a stdio open file
+		in the save format, fflush() every so often...
+		(diffs w/r to the original file)
+2) make sure ISVALID should <not> be used in place of checkbounds
+	in interp.c
+3) hide range
+4) block moving into range
+5) chain cells w/ equations into a linked list or dependency tree
+	-have a top level eval, eval and UPDATE all lower nodes
+6) an option to go into a ^R like <mode>
+	++data entry fields (highlight entry cells)....
+	++only allow entry in these cells....
+7) don't redraw the whole screen all the time 
+	(only cells that change, (in addition to what is in 'fixed #9'))
+	(Note: there was no #9 when I took this over, and I've renumbered
+	things since then, so I'm not sure what this is referring to - CRM)
+8) add uemacs keybinding stuff
+9) add uemacs macro language
+10) add uemacs command completion
+11) add undo

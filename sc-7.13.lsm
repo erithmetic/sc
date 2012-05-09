@@ -1,0 +1,17 @@
+Begin4
+Title:		sc Spreadsheet Calculator
+Version:	7.13
+Entered-date:	2001-8-4
+Description:	sc is a free curses-based spreadsheet program that uses
+		key bindings similar to vi and less.
+Keywords:	spreadsheet calculator console textmode curses ncurses
+Author:		Too numerous to mention.
+Maintained-by:	cmartin@bigfoot.com (Chuck Martin)
+Primary-site:	ibiblio.org /pub/Linux/apps/financial/spreadsheet
+Alternate-site:
+Original-site:
+Platforms:	Pre-7.x versions presumably worked on any Unix or Unix
+		clone, as well as VMS and DOS.  Hopefully, this is still
+		true, but it's only been tested on Linux.
+Copying-policy:	Public domain
+End

@@ -1,0 +1,1574 @@
+CHANGES BETWEEN 7.12 and 7.13:
+Chuck Martin
+	-New column formats may now be defined with "format # = string",
+	 where # is a number from 0-9, and string is a format string like
+	 that used for formatting individual cells.  Numbers 0-4 will
+	 replace the default formats (causing the precision value to be
+	 ignored), and numbers 5-9 will add new ones.
+	-Format strings now interpret "&" in the fractional part to mean
+	 that the column precision should be used.  This allows user
+	 specified formats to have their precision vary from column to
+	 column without having to create multiple formats (see the previous
+	 item).
+	-The "vr" command now limits itself to the current framed range,
+	 if any, like "dr" and "yr".  If not contained in a framed range,
+	 it works as before.
+	-The "yy" command now yanks only the current cell instead of the
+	 current row, as this seems more useful.  Likewise, "vv" converts
+	 the current cell from an expression to a constant value, and for
+	 consistency, "dd" erases the current cell ("dd" is a synonym for
+	 "x" now, instead of "dr").
+	-You can now unset mdir and autorun by setting them to "".
+	-Both goraw() and deraw() do nothing if stdout is not a terminal.
+	 This prevents segmentation faults when using sc non-interactively
+	 with redirection or pipes.
+	-The redraw command also does nothing if stdout is not a terminal
+	 for the same reason as the goraw() and deraw() functions (see the
+	 previous item).
+	-doquit() and dump_me() no longer try to prompt the user about
+	 saving a file under emergency situations such as a broken pipe
+	 or kill signal if stdout is not connected to a terminal, which
+	 prevents even more possible segmentation faults.  Also, SIGINT
+	 is no longer ignored, but calls doquit() instead.
+	-Added a "usecurses" variable, and replaced most instances of
+	 "isatty(STDOUT_FILENO)" with "usecurses".  The -q option also
+	 resets usecurses to 0, so echoing commands to "sc -q" now works
+	 from the command line.
+	-Added another "usecurses" before the confirmation message in the
+	 writefile() function.
+	-The error() macro now checks stdout instead of stdin before dis-
+	 playing its message.
+	-find_char() now checks to see if the last character in the dot
+	 buffer is 'f', 'F', 't', or 'T', and if so, stores the next
+	 character after it.  This causes these commands to be stored
+	 in the dot buffer if they are part of another command (such as
+	 'df+'), but not otherwise.
+	-Fixed a bug where numeric arguments could not be used in edit and
+	 navigate modes if quick numeric mode was set.
+	-Added a new command, seval, that evaluates an expression like
+	 eval, except it evaluates string expressions instead of numeric
+	 expressions.
+	-Added KEY_BACKSPACE and KEY_END to the control key handling part
+	 of the main loop, and removed KEY_END from nmgetch().
+	-Eliminated the hitwinch variable and moved all SIGWINCH stuff into
+	 the SIGWINCH handler (winchg()).  Also, changed update() to use
+	 getmaxyx() instead of LINES and COLS.  These changes make sc
+	 react immediately to resizing xterms (for some reason, this
+	 doesn't work with old versions of ncurses--at least not with
+	 version 1.9.9g, which seems to require restarting sc to make size
+	 changes effective).
+	-A new Y command in edit mode that yanks to the end of the line,
+	 like y$ (I know this isn't the way Y works in vi, but it's the
+	 way it *should* work for consistency [cf. the D and C commands],
+	 and the way Y works in vi would be pointless in sc).
+	-The "cellassign = 1" in slet() is now only done if the cell being
+	 assigned to is the current cell, like it was supposed to (I must
+	 have deleted that part by accident somewhere along the line).
+	-The /S command now lists named ranges, framed ranges, and color
+	 ranges, one after another, along with definitions of any colors
+	 that have been changed from the default (no second letter required).
+	-Colors may now be unset (reverted back to their default start-up
+	 values) by leaving out the expression (e.g. "color 3 =" will
+	 set color 3 back to it's original foreground/background pair).
+	 Unlike setting it explicitly to its original value, this will
+	 not cause the expression to be written to the file when saved.
+	-Changed test in pullcells() function for checking if there is
+	 data to pull so that instead of testing the actual pointer to
+	 see if it's NULL, the index will be tested to see if it's
+	 negative.  The old method was causing segfaults if the delete
+	 buffer was empty.
+	-^A now goes to the beginning of the line in edit and insert modes.
+	 It retains its original behavior in navigate mode (the man page
+	 already stated that inserting the numeric value of the current cell
+	 into the command only works in navigate mode; now the behavior
+	 matches the manual).
+	-Range names may now begin with a digit as long as there is at least
+	 one non-numeric character (alpha or '_').
+	-Added range name completion.
+	-Fixed a bug that caused range names to match when they shouldn't
+	 when parsing a command (a range name would be matched by any
+	 string of characters that matched the beginning of the name, so
+	 that if "abc" and "abcd" are both defined, an expression using
+	 "abc" would end up accessing the wrong range, since the list is
+	 searched in reverse alphabetical order).
+	-Cells with attached notes are now identified with an asterisk to
+	 the left of the numeric portion (using color 4, default black on
+	 yellow, if color is enabled).
+	-The J, K, PageUp, and PageDown commands now use the pagesize setting
+	 even in navigate mode.
+	-^B and ^F now do the same as PageUp and PageDown instead of moving
+	 left or right one cell.  This is to be more compatible with vi,
+	 resulting in less confusion for those who use both.
+	-Centered strings are now entered by pressing '\' instead of '"',
+	 so that '"' can be used for multiple delete buffers as in vi in
+	 the future.
+	-If an autorun macro is already defined, pressing 'A' will include
+	 it for editing in the command line it brings up, as it should
+	 (it wasn't working properly due to a missing else).
+	-In openfile(), check if rfd is NULL (signifies opening pipe to
+	 process for both reading and writing) before closing unused end
+	 of (non-existent) second pipe.  This was causing intermittent
+	 lock-ups when only writing to a pipe because stdin was being
+	 closed.
+	-The screen is no longer cleared or redrawn unless absolutely
+	 necessary after a macro is run, since most macros won't need it,
+	 and it causes screen flicker.  Macros which need it (those that
+	 write directly to the screen, bypassing sc) will need to do an
+	 explicit redraw before ending.
+	-SIGPIPE now causes a flag to be set (brokenpipe), which is checked
+	 a number of places so that nothing more is written to the pipe
+	 and an error message is displayed, instead of trying to save the
+	 file and quit (an annoyance when all you did was do a /S and then
+	 quit before reading the whole output).
+	-If the last character in the string in a run command is '&'
+	 (signifying the command will be run in the background), the
+	 "Press any key to continue" prompt will not be displayed, and
+	 sc will continue with no hesitation.  I use this in Linux to
+	 load another sc file in another virtual console with "openvt -sw"
+	 (assign it to a function key for ease of use).
+	-Added @rows and @cols functions that take a range as argument and
+	 return the number of rows or columns, respectively, in that range.
+	-Added a new error command for displaying error messages from macros
+	 (syntax: `error "message to display"').
+	-The duprow() and dupcol() functions now put the cursor in the
+	 original column or row, respectively, which, among other things,
+	 prevents sc from hanging when multiple rows or columns are appended.
+	-A `put ""' command (with the empty string) will save the default
+	 name even in a pipeline, unless the default name is also the empty
+	 string, in which case it will be written to stdout.
+	-Removing a function key definition by defining it to be "" (the
+	 empty string) now changes the pointer to NULL in addition to freeing
+	 the string, as it should.
+	-When using goto (g) to jump to a specific cell address (as opposed
+	 to doing a search), only save the current address for the `` and
+	 '' commands if the destination address is different.
+	-When inserting or deleting rows or columns, update the addresses
+	 associated with the last explicit goto.
+	-Added definitions for color_set() and attr_get() to sc.h for
+	 older versions of (n)curses that have missing or outdated versions
+	 of these macros (not conforming to X/Open Curses).
+	-Colors are now reinitialized in startdisp() (using init_pair()) so
+	 that they continue to work properly after resizing an xterm.
+	-The -P command line option can now be used without specifying the
+	 source range, but the target address must be specified in such a
+	 case, preceded by a '/' (e.g. '-P/f23').  In this case, sc will be
+	 started interactively in navigate mode so you can highlight the
+	 source range you want to import.
+	-The -P command line option may now be used more than once, and
+	 the specified ranges will be output one after another, however,
+	 the -v option must precede each instance of -P whose output is to
+	 be converted to values.  This allows multiple ranges to be copied
+	 from one file to another without having to load and calculate the
+	 entire source file for each of them.
+	-The destination given with the -P option may now be specified as
+	 either a cell address or a range.  If a range is specified, the
+	 upper left corner of that range will be used.  This allows named
+	 ranges to be used.
+	-The initial allocation of memory for color pairs is now done in a
+	 loop instead of eight explicit statements.
+	-Undoing changes made to a command now works after using replace mode.
+	 Also, backspacing in replace mode restores the original character
+	 instead of just deleting the new one and closing the hole.
+
+CHANGES BETWEEN 7.11 and 7.12:
+Chuck Martin
+	-The yankrow and deleterow commands can now take a numeric argument
+	 or two numeric arguments separated by a colon to specify a row or
+	 range of rows to yank/delete.  Likewise, the yankcol and deletecol
+	 commands can now take a column name or two column names separated
+	 by a colon to specify a column or range of columns to yank/delete.
+	-Pressing y or d followed by any cursor movement, including PageUp,
+	 PageDown, H, J, K, or L, will begin highlighting full rows/columns
+	 to be yanked or deleted.  Pressing TAB, '.', or ':' will terminate
+	 the highlighting and insert the range of rows/columns in the
+	 command line.  Pressing the RETURN key, instead, will yank/delete
+	 the default range of rows/columns displayed.
+	-Added a pagesize option that can be changed with the set (S)
+	 command.  If nonzero, it will determine the number of rows to
+	 move up or down when using the J, K, PageUp, or PageDown keys.
+	-The PageUp, PageDown, J, and K commands will now be multiplied
+	 by a preceding numeric argument like most other commands.
+	-An improper test was causing the syncref() function to corrupt
+	 expressions which referenced empty cells every time anything was
+	 deleted or moved.  This has been fixed (the struct ent now has
+	 an additional "is_cleared" flag).
+	-When adding a note with "na", automatically start out in navigate
+	 mode.
+
+CHANGES BETWEEN 7.10 and 7.11:
+Chuck Martin
+	-You can now use ~ in edit mode to change the case of a character,
+	 just like in vi.
+	-In quick numeric mode, the + and - keys now switch to insert mode
+	 and append a + or - to the existing numeric entry, respectively.
+	 This is so that you can easily add to or subtract from a cell that
+	 already contains numeric data.
+	-When attempting to edit the numeric value in a cell with e, +, or
+	 -, and no value or numeric expression has previously been entered
+	 in that cell, you will no longer be presented with a 0 to edit.
+	-In navigate mode, the + and - keys now insert the current cell
+	 address, followed by a + or -, respectively, and remain in navigate
+	 mode, so that other cells may be easily added to or subtracted from
+	 the equation.
+	-^E can now be used in insert mode to jump to the end of the line.
+	-Check to see if $HOME exists before copying it to curfile to
+	 prevent segfaults if it's unset.
+	-The deraw() function now sets the background to the default colors
+	 (white on black) before clearing the last line.
+	-If piping from a command (as opposed to *to* a command), as in
+	 advanced macros, the cell cursor won't move to the last line and
+	 the last line won't be cleared, which avoids unnecessary screen
+	 updates.
+	-Function key definitions are now saved with a spreadsheet file.
+	 It makes more sense to include them with the file than to consider
+	 them user preferences for inclusion in a dotfile.
+	-Fixed a bug that prevented locked cells from being recalculated
+	 (this actually looked deliberate, but I don't understand why, so
+	 I "fixed" it anyway). 
+	-Locked cells now can't be changed even if the command is entered
+	 from scratch at the command line (previously, you were only pre-
+	 vented from using =, <, >, or " to enter insert mode while in a
+	 locked cell).
+	-There are now openrow and opencol commands ("o" followed by "r" or
+	 "c") that work like insertrow and insertcol ("ir" and "ic"), except
+	 that the new rows/columns are added after the current row/column
+	 instead of before it.
+	-When adding new rows/columns with a, i, or o, the new cells will
+	 always be included in the same ranges (named, framed, or color,
+	 as well as those used in an expression) as their counterparts in
+	 the current row/column.  This is handy when adding rows/columns
+	 at the edge of a range, by moving to the appropriate side of the
+	 boundary and using the appropriate command (i or o).  This is
+	 actually multiple changes, since each type of range had to be
+	 dealt with individually.
+	-Added new command line options for use in piping data to another
+	 program or redirecting to a file.  These are: "-P range" or "-P
+	 range/var" for writing a range in sc format to stdout (the "var" is
+	 a cell address used to adjust addresses for inclusion in another
+	 file starting at cell address "var"), and -v for causing values to
+	 be output instead of expressions when the -P option is used.  This
+	 only outputs cell data and formatting, without all of the colors,
+	 range definitions, column formatting, etc., that are included with
+	 the normal put command or when piping the output without the -P.
+	 Also, piping in general has been much improved.
+	-When using get to load a new file, all options are reset to their
+	 initial defaults, marked cells are unset, etc., and the user's
+	 .scrc file is reread.
+	-Fixed a bug which allowed strings that are too long for the cell
+	 width to slop over into the next cell when they shouldn't (there
+	 is data in the next cell, for example).  This bug only occurred in
+	 framed ranges.
+	-The pipe symbol (|) is no longer required at the beginning of
+	 the "pipe" commands.  The way the proper file descriptor is
+	 chosen has changed so it's no longer necessary.  This makes it
+	 easier to use shell scripts for macros because there's no pipe
+	 symbol to quote (it should have been done this way in the first
+	 place--I don't know why it didn't occur to me before).
+	-Added a "status" command for use in advanced macros that will return
+	 information about the current state, such as whether the file has
+	 been modified and whether stdin or stdout is connected to a terminal.
+	-Added an "eval" command for use in macros to evaluate an expression
+	 without storing it in a cell first.  This is a pipe command so the
+	 result will be piped to the macro.
+	-Added a -q command line option to force sc to exit immediately
+	 after reading all files, including stdin, if that is being read
+	 as a file.  This is useful for getting information from a file
+	 without entering it interactively (e.g. echoing the eval command
+	 to sc from a shell script, effectively using sc as a command line
+	 calculator).
+	-Defining a function key as "" (the empty string) will effectively
+	 undefine it, so it won't be written to the file when saving.  When
+	 used with F1, this restores the default behavior of reading the
+	 man page.
+	-After doing a goto, update() is called, so that following a goto
+	 by a whereami in a macro will return the correct second address
+	 (the upper left corner of the current screen).
+	-^E and ^Y both work in navigate mode now.  ^E works both for
+	 scrolling and going to the end of a blank/non-blank region.  The
+	 END key also works in navigate mode.
+	-Fixed problem in the range commands (those initiated with a "/")
+	 where the cursor wasn't being positioned properly at the end of
+	 the command line due the the recent change in how insert mode is
+	 entered (for making the dot buffer work properly).
+	-Simplified logic for doing autorun macros.
+	-When starting to define a range from navigate mode with the TAB,
+	 ".", or ":" keys, a space is no longer inserted into the command
+	 line (there was an "ins_in_line(' ')" in the wrong place).
+	-Added a new function, @err, that forces an error.  If rows or
+	 columns are deleted and not pulled back in, all references to
+	 cells in those rows/columns will be replaced with @ERR until they
+	 are pulled back in (@ERR is equivalent to @err, but the caps show
+	 that it is due to a deleted cell being referenced).  If the
+	 spreadsheet is saved to a file before pulling, the @ERR will be
+	 saved as a part of the expression, and will show as @err (lower
+	 case) after being read in again, since the deleted cell can no
+	 longer be restored.  This is so that it can be fixed in a later
+	 session.  Previously, the whole expression was lost if there was
+	 an error when the file was saved and reread.  Also, if another
+	 deletion is performed before pulling the last one in, all instances
+	 of @ERR will change to @err, showing that these references may
+	 no longer be restored.
+	-Fixed a bug when inserting columns at the end of the scrolling
+	 portion of a framed range, which caused formulas referencing the
+	 last cell in the scrolling portion to reference the new last cell
+	 (in the last newly added column) instead of the old one.
+	-Added a command to sort the rows in a range according to either
+	 numeric or string data (or both) in one or more columns.  See man
+	 page for details.
+	-Added a "cslop" option (short for "color slop"), disabled by
+	 default, which, when disabled, prevents long strings from slopping
+	 over into a cell in a different color range, even if there is no
+	 data in it.  When enabled with "set cslop" or ^Ts (to toggle it),
+	 this slopover will occur regardless of whether there is a change
+	 in color range or not.  The default is very handy in framed ranges
+	 to get more data on-screen by including only the beginnings of row
+	 identifiers in the frame while maintaining a cleaner look, while
+	 enabling cslop still allows you to see the full string.
+	-All options which can be disabled by using ! with the set command
+	 can now use ~ instead (handy for shell scripts because it doesn't
+	 need to be quoted).  Some options worked this way before, but it
+	 wasn't consistent.
+	-The move command will now accept the currently highlighted range
+	 as its second argument even if you don't press TAB, ".", or ":"
+	 to enter it into the line.
+
+CHANGES BETWEEN 7.9 and 7.10:
+Chuck Martin
+	-Implemented "dd" command as a synonym for "dr" and "yy" as a
+	 synonym for "yr" (similar to the way these commands work in vi).
+	-Added a vi-like y (yank) command to edit mode which copies from
+	 the command line to the text delete buffer without deleting.
+	-Added two more goto commands: `goto #"regex"' to do a regular
+	 expression search through formatted numbers, and `goto %"regex"'
+	 to do a regular expression search through expressions.  Both of
+	 these may take an optional range argument to limit the search
+	 to a specified range.
+	-Added a |getframe command for use in macros to return the outer
+	 and inner ranges, respectively, of a frame, separated by a space.
+	-You can now scroll up and down without moving the cell cursor
+	 using ^E and ^Y, as in vi.  Since ^E also has another function,
+	 it only scrolls when immediately following a ^Y or another ^E.
+	-Corrected man page which still erroneously stated that C centers
+	 the current cell (it is now used to define a color).
+	-ZZ now only writes a file if it has been modified.  It also gives
+	 an error message if there is no default file name.
+	-If cell highlighting is turned off while color is on, the cell
+	 pointer (<) no longer leaves a trail through colored ranges (I
+	 don't know why anyone would use this combination of options, but
+	 it's fixed, anyway).
+	-When writing a range with the put (P) command, format commands
+	 for columns outside the specified range are no longer written.
+	-Removed "#include <stdio.h>" from sc.c, vi.c, and xmalloc.c, since
+	 this is redundant when curses.h is included.
+	-Added an autorun command (shortcut "A") to specify a macro to be
+	 run automatically as soon as the file finishes loading.  Autorun
+	 macros will not be executed from a file which is merged (such as
+	 another macro).
+	-When uninstalling, $(LIBDIR) (default: /usr/lib/sc) is removed
+	 completely, instead of just its contents.
+	-When used in a pipeline rather than a terminal, the format command
+	 doesn't try to resize the column because the format is "too large"
+	 for the screen, which resulted not only in negatively sized
+	 columns, but also segmentation faults when switching to interactive
+	 mode.
+	-Initialized variable "pid" to 0 in readfile() function in cmds.c
+	 to eliminate potential hangs when closing a file after reading.
+	-A message was added to let you know when a file is being read so
+	 it doesn't look like the program hung when reading a large file.
+	-When switching from reading from a pipe to interactive mode, there
+	 is now a stopdisp() before the freopen() and a startdisp() after
+	 to make sure the curses initialization is done properly.
+	-Now checks to see if the stdin is a tty before trying to check
+	 if the terminal has colors (curses has_colors()) to prevent
+	 segfaults when run in a pipeline.
+	-Modified both the sc and psc man pages for a more consistent
+	 look.
+	-You can now use numeric arguments in the middle of a command in
+	 edit mode, as well as the beginning.  For example, d3w and 3dw
+	 both do the same thing.  If you do both, they will be multiplied.
+	-sc now uses getopt() to parse its options.
+	-If stdin is not a terminal (as in a pipeline) and a filename of
+	 "-" is not given, stdin will be merged in after all files on the
+	 command line have been processed.
+	-Added a modflg++ to the frame-handling part of the deleterow()
+	 function in cmds.c so that deleting a row in a frame will cause
+	 you to be prompted to save the file if you quit.
+	-Added an autoinsert option and toggle (^Ti) to automatically
+	 insert a row/column each time the last row/column is filled in
+	 the scrolling portion of a framed range if craction is set to
+	 move the cell cursor so that it moves outside this range.
+	-Marked cells are now updated properly when inserting or deleting
+	 rows inside a framed range.
+	-In both edit mode and navigate mode, "v" is now a synonym for ^V.
+	-Moved savedot() out of vigetch() in vi.c so that the f, t, F, and
+	 T commands wouldn't be saved for repeating with the dot command.
+	 Added a ";" and "," command to repeat these commands instead, as
+	 in vi (the latter reverses the direction of the search).
+	-Replaced all instances of "insert_mode()" in the main loop in sc.c
+	 with "edit_mode; write_line('A')" so that they are written into
+	 the dot buffer properly.
+	-Pressing RETURN in insert mode enters an ESC into the dot buffer
+	 instead of a ^M so that the dot command only repeats the last
+	 change, without automatically ending the input.
+	-Removed a sync_refs() from the frame-handling section of insertrow()
+	 in cmds.c so that deleting and then pulling a row in a framed range
+	 doesn't mess up expressions that referred to cells in that row.
+	-When not editing a line, ^A goes to A0 like the HOME key.
+	-Navigating with the HOME key, ^A, 0, ^, $, or # now saves the
+	 current position for returning with `` or ''.
+
+CHANGES BETWEEN 7.8 and 7.9:
+Chuck Martin
+	-Fixed a bug where cells in the delete buffer were having their row
+	 and column numbers changed each time they were pulled to match the
+	 last pull address instead of keeping their original values.
+	-Added two more options for the 'p' (pull) command, in addition
+	 to 'pr' (pull rows), 'pc' (pull columns), and 'pm' (pull merge).
+	 These are 'px' (pull exchange), which works like 'pm', but instead
+	 of leaving the contents of the delete buffer unchanged, exchanges
+	 the cells in the delete buffer with those being overwritten; and
+	 'pt' (pull transpose), which works like 'pm', but transposes the
+	 rows and columns while pulling them into the spreadsheet.  Also
+	 added equivalent commands for use in macros: pull (pm), pullrows
+	 (pr), pullcols (pc), pullxchg (px), and pulltp (pt).
+	-Fixed bug when inserting rows at the end of the scrolling portion
+	 of a framed range, which caused formulas referencing the last cell
+	 in the scrolling portion to reference the new last cell (in the
+	 last newly added row) instead of the old one.
+	-Added a 'yankrow' and 'yankcol' command for macros, and 'yr' and
+	 'yc' equivalents for the user, which work like /y, but work on
+	 whole rows or columns instead of a range.  'yr' is limited to
+	 the current framed range, if any, just like the other row commands.
+	-When deleting, yanking, etc., the upper left and lower right cells
+	 of the range are allocated if they don't exist, so that pulling
+	 them back in will always work correctly, even if all the cells
+	 in one or more edges of the range being erased are empty.  Pre-
+	 viously, they might be offset due to the pullcells() function
+	 using the minimum and maximum rows/columns of any cell in the delete
+	 buffer to determine the range being pulled.
+	-The closecol() function now only takes one argument, since the
+	 first argument was always curcol whenever the function was called.
+	-If the color option is the only one that has been changed, it
+	 will still be saved in the file (the test was reversed).
+	-Cells may now be marked while in navigate mode.
+	-Can now 'goto' a cell, range, etc., while in navigate mode, without
+	 losing the command line being entered.
+	-Added a |query command that allows a macro to display a question
+	 or message and obtain information from the user.
+	-The 'run' command now frees up the space allocated to the command
+	 string being run after it's through.
+	-Removed a '+1' from the coltoa() function because it was causing
+	 the column returned to be off by one.
+	-Moved the gmyrow and gmycol variable assignments to the beginning
+	 of the RealEvalOne() function so that @myrow and @mycol work not
+	 only in numeric expressions, but also in string expressions.
+	-Two variables in screen.c seemed to serve the same purpose.  These
+	 were lastcol and lastcurcol.  All occurrences of lastcurcol were
+	 changed to lastcol to eliminate the redundancy, and lastcurrow
+	 was changed to lastrow for consistency.
+	-Numeric arguments are now accepted in edit mode and navigate mode.
+	 For now, the numeric argument must precede the whole command, rather
+	 than come in the middle.  For example, "3dw" works; "d3w" does not.
+	-The f, F, t, and T commands in edit mode now work properly even
+	 if the cursor is currently on a character matching the one being 
+	 searched for.
+	-More bugs fixed in screen.c dealing with framed ranges, one which
+	 was causing the row labels at the left of the screen to disagree
+	 with the actual cells being shown under certain circumstances.
+	-Many more minor changes and bug fixes I've forgotten, and don't
+	 have the time to figure out from the diffs.
+
+CHANGES BETWEEN 7.7 and 7.8:
+Chuck Martin
+	-Separated most of the code for framed ranges into its own file.
+	-Inserting, deleting, or appending rows while in a framed range
+	 now only effects the framed range you're in.  The old behavior
+	 of inserting, deleting, or appending the row or rows all across
+	 the whole spreadsheet is still the default behavior when done
+	 outside of all framed ranges.
+	-Inserted columns are never hidden when created.  Previously, the
+	 hidden flag was copied from elsewhere, resulting in new columns
+	 potentially being hidden for no apparent reason.
+	-Columns may now be inserted at the end of the scrolling region of
+	 a framed range.  Previously, they were added to the bottom of
+	 the frame instead.
+	-Changed the behavior of the delete row/column (dr & dc), the
+	 delete range (/x), and the delete cell (x) commands so that
+	 subsequently pulling the deleted row/column/range into another
+	 part of the spreadsheet will cause references to external cells
+	 to continue to point to their original locations.  References to
+	 deleted cells show as "ERROR", but pulling the cells back in
+	 restores the references.
+	-Implemented a "move range" (/m) command, which, unlike deleting
+	 and pulling, will cause all cell references to move with the
+	 range (both internal references to external cells and external
+	 references to internal cells; see the man page for more informa-
+	 tion).
+	-Implemented a "yank range" (/y) command, which copies a range
+	 into the delete buffer without actually deleting it.
+	-The range-copy command (/c) may now be used without arguments,
+	 or with only the destination specified.  See the man page for
+	 details.
+	-Implemented colors and color ranges, with the ability to base
+	 foreground and background colors on a calculation or test, and
+	 to set colors differently for negative numbers or cells with
+	 errors.  See man page for more information.
+	-Writing a file now gives a message telling what it's doing,
+	 instead of only after it's done (useful for large files, so you
+	 know it probably didn't lock up).
+	-The `, ', and * commands now work in navigate mode.
+	-The yn_ask() function in cmds.c now ignores anything except y, Y,
+	 n, N, ESC, and ^G, instead of giving an error message and returning.
+	-@pi now acts as a function instead of a constant, so it won't be
+	 optimized away unless the optimize option is turned on.
+	-You can now "define" a cell (give it a name) without pressing
+	 TAB or equivalent to start highlighting a range.
+	-The redraw command no longer sets FullUpdate (it may not be
+	 necessary).
+	-Negative numbers are now treated as constants instead of expressions
+	 (required adding unary "-" operator to list of tests in constant()
+	 function in interp.c).
+	-Changed isfunc from type bool to type int, since this is more in
+	 keeping with the way it's now used.
+	-Moved test for KEY_END back into nmgetch(), since, not being a
+         control character, it wasn't working properly in the main loop.
+	-The |getnum and |fgetnum commands can now return ERROR and INVALID
+	 if the cell has a first or second generation error, respectively.
+	-Removed "#include <stdio.h>" from range.c, since this is redundant
+	 when curses.h is included.
+	-Cursor keys now work properly with the END key (or ^E).
+	-The goto command now works with all labels, including those which
+	 are the same as keywords.
+	-ESC and ^G can now be used to cancel defining/undefining a framed
+	 range, and an error message is issued for invalid frame commands.
+	-Strings can now be rejustified by pressing {, }, or | while the
+	 cell cursor is in the appropriate cell.
+	-Documented the changes made to @index and @stindex in version 7.7
+	 in the man page.
+	-Fixed numerous bugs in the screen-handling code in update() in
+	 screen.c (mostly in handling frames).  Hiding columns no longer
+	 causes sc to lock up, and column headings are centered better.
+	 This is terribly inefficient code, and a nightmare to debug, and
+	 really needs to be rewritten from scratch.
+	-You can now use ":" in navigate mode as a synonym for "." or TAB.
+	-Removed redundantant TAB description in list of keybindings for
+	 edit mode in the man page.
+	-When defining a range with the cursor, "," will now insert the
+	 range into the command line followed by a literal ",", similar to
+	 the way ")" works now.  Also, if the range is ended with a TAB,
+	 ".", or ":", a space will be inserted after the range in the
+	 command line.
+	-In navigate mode, "c" will insert the color range, "f" will insert
+	 the outer frame range, and "r" will insert the inner frame range
+	 which includes the current cell into the command line.
+	-Going through the command history now positions the cursor at the
+	 end of the line instead of the beginning.
+	-The command for hiding rows/columns has been changed from "z" to
+	 "Z", so that "z" could be used as in vi to move the current cell
+	 to the top ("z<RETURN>") or middle ("z.") of the screen, and also
+	 to center the current column ("z|") or the current cell, both
+	 vertically and horizontally ("zc"), which aren't in vi, but are
+	 patterned after vi.  Other "z" commands may be added later.  Also
+	 implemented vi-like "ZZ" shortcut to save and quit in one step.
+	-Added "tags" to the list of files to be removed during a make clean
+	 or make distclean.
+	-Removed the "-lfl" from the LIBS line in the Linux section, since
+	 flex isn't being used (Was it ever?  Should this also be done
+	 in the system V.3 section?).
+	-Lots more minor bug fixes and things I've forgotten.
+
+CHANGES BETWEEN 7.6 and 7.7:
+Chuck Martin
+	-The openrow() function has been eliminated, and insertrow()
+	 has been rewritten to eliminate looping.  The closerow()
+	 function has also been rewritten to eliminate looping (it takes
+	 a second argument specifying the number of rows to delete).
+	 Also, the opencol() function has been eliminated, and its
+	 functionality incorporated into insertcol().
+	-New commands: insertrow, insertcol, deleterow, and deletecol for
+	 use in advanced macros.
+	-Added rowsinrange and colsinrange variable assignments in
+	 doformat() function to eliminate potential lock-ups.
+	-Changed many shorts to ints because they were actually increasing
+	 the code size instead of decreasing it, and slowing things down.
+	-Added a cbreak() to the closefile() function so you can now
+	 "press any key" instead of "press RETURN" to continue.  Also
+	 changed the main loop under "case '!'" in the same way.
+	-Removed redundant v_name() declaration from write_fd().
+	-New command: run, for running arbitrary programs (useful in
+	 function key definitions).
+	-The getnum, fgetnum, getstring, getexp, and getfmt commands may
+	 now be used with a range argument to get data from more than one
+	 cell at a time.
+	-The @index and @stindex functions may now take a third argument
+	 to index into a two-dimensional array as well as the old one-
+	 dimensional version.  Also, the @lookup, @hlookup, @vlookup, @index,
+	 and @stindex commands will now accept their range argument as the
+	 first argument instead of the second (the old order is still
+	 accepted), which makes more sense with the new two-dimensional
+	 @index and @stindex.
+	-The goto command no longer duplicates the previous goto command
+	 if there is an error in the command (accepting the WORD token
+	 as an argument to mean "do nothing" fixed this).
+	-"Showing" (listing) named ranges no longer pipes through sort,
+	 since that also sorted the headings and the following blank line
+	 with the data.  Instead, named ranges are inserted into the
+	 list in sorted order as they're created.
+	-Deleting a named range now updates modflg like it should.
+	-The F1 key now defaults to running "man sc" if not redefined
+	 with the fkey command, and the default also works in edit mode,
+	 unlike the user-defined function keys.
+	-When starting a range command with '/', if you change your mind
+	 and press ESC or ^G, the error line is now cleared.
+	-When using 'ns' to show which cells have attached notes, a message
+	 is now presented informing the user what the highlighted cells
+	 mean (I know it should be obvious, but a message reminds you in
+	 case you get distracted, and forget your current cell isn't
+	 highlighted).
+	-startshow() and showdr() were moved from sc.c to vi.c, where
+	 they can be used more easily.
+	-RESCOL has been changed from a macro to an int, and renamed to
+	 rescol (lowercase), so it can be changed when the spreadsheet
+	 has too many rows for the row numbers to fit properly, causing
+	 problems with the first displayed column.
+	-The default value of mode_ind has been changed from '.' to 'i'.
+	-Renamed navigate_mode() to toggle_navigate_mode() to better fit
+	 its function.
+	-Fixed history functions so that some lines aren't skipped when
+	 moving forward.
+	-Fixed TAB behavior in navigate mode so it doesn't exit navigate
+	 mode, requiring you to press ^V to continue defining the range.
+	-Implemented vi-like G, P, and p commands in edit mode, moved
+	 ^I (TAB) funcionality from main loop to write_line(), and added
+	 '.' as a synonym for TAB, and changed behavior of RETURN/ENTER
+	 key in navigate mode to end input as it does in insert or edit
+	 mode if a range is highlighted instead of entering the range into
+	 the line like TAB or '.' does.
+	-The H, J, K, L, HOME, and page up/down keys now work in navigate
+	 mode.
+	-The savedot() function now checks to see that there are at least
+	 two chars left in the dot buffer before saving if the last key
+	 pressed requires two chars to store (cursor keys, HOME, etc.).
+	-Pressing ESC or ^G now cancels the r (replace a single character)
+	 command instead of being entered into the command line.
+	-Implemented vi-like c0, d0, c$, and d$ commands, and fixed the
+	 dw command again (was deleting an extra char).
+	-Replaced loop in del_chars() with a memmove().
+	-Implemented framed ranges, whereby rows or columns at the top,
+	 bottom, left, and/or right of the range will remain onscreen at
+	 all times whenever the cell cursor is in that range.
+	-The set and goto commands now work properly again (set wasn't
+	 allowing multiple arguments and goto didn't accept error or
+	 invalid as an argument).
+	-Defined ranges with names equivalent to function names (without
+	 the "@") or other keywords no longer cause errors when subsequently
+	 used.
+
+CHANGES BETWEEN 7.5 and 7.6:
+Chuck Martin
+	-Fixed error() macro so messages are displayed like they should be.
+	 This should probably be rewritten as a regular function.
+	-Added programmable function keys.
+	-Added a navigate mode that can be switched to while editing a
+	 line, which allows movement around the spreadsheet using any and
+	 all cursor movement keys.  In addition to the control characters
+	 and cursor control keys, this now also including 0, $, ^, #, h, j,
+	 k, l, H, J, K, L, b, and w, which used to be unavailable while
+	 editing.  The arg variable was made global so that cursor movement
+	 keys can be given a numeric argument even when in navigate mode.
+	 Since ^V is the command to enter navigate mode, it must be pressed
+	 twice to get its former action: once to enter navigate mode, and
+	 a second time (after moving to the cell you want) to enter the
+	 cell address in the command line (the RETURN/ENTER key may be
+	 substituted for the second ^V).
+	-The ins_in_line() function is now global, so  it can be used
+	 from the main loop in sc.c.
+	-The /d command (for defining a range) doesn't automatically
+	 start highlighting a range, since that would mean switching to
+	 navigate mode, and a range name needs to be entered first, but
+	 the rest of the range commands enter navigate mode and start a
+	 range immediately.
+	-Special keys, such as cursor control keys, the END, INSERT,
+	 and DELETE keys, etc., are no longer converted to straight
+	 ASCII equivalents in nmgetch(), but are passed as-is to the
+	 functions where they're used.  Also, the conversions made in
+	 nmgetch() for the wyse wy75 have been disabled because they
+	 interfere with the programmable function keys.
+	-Using the TAB key to highlight a range and enter it into a
+	 command will now insert it at the cursor position instead of
+	 appending it at the end of the line.
+	-When editing, the current command line is temporarily added to
+	 the end of the history so you won't lose your work if you go
+	 back through the history, although it doesn't become a permanent
+	 part of the history until you press the RETURN/ENTER key.
+	-The savedot() and dotcmd() functions have been modified to save
+	 and retrieve special keys like the INSERT and DELETE keys as two
+	 consecutive bytes.
+	-The default prefix in the Makefile has been changed back to /usr.
+
+CHANGES BETWEEN 7.4 and 7.5:
+Chuck Martin
+	-Rewrote error() macro definition to fix segfaults in version 7.4.
+	-Fixed division operator to eliminate segfaults in version 7.4.
+	-Do NOT use version 7.4.  The above bugs make it unusable.  My
+	 sincere apologies for not testing thoroughly after some last
+	 minute changes.
+
+CHANGES BETWEEN 7.3 and 7.4:
+Chuck Martin
+	-Added a BUGS file that lists known but not-yet-fixed bugs.
+	-Lots of changes to allow -Wall to be used with gcc without too
+	 many warnings, including additional #includes in some files,
+	 parentheses around assignments used as booleans, braces in the
+	 sed files, and the removal of many register declarations.  -Wall
+	 is not used by default in the Makefile because a few innocuous
+	 warnings remain that may worry some people if they don't under-
+	 stand them.  Also changed -O to -O2 in Linux section CFLAGS.
+	-Added an uninstall target to Makefile.
+	-Before jumping to a new cell (any movement except simple cursor
+	 movements or half-screen movements), the location is remembered,
+	 and may be returned to by using either `` (to restore the cell
+	 cursor to its original location on the screen) or '' (to do a
+	 simple jump to the cell without regard to where it exists on the
+	 screen).  This is similar to the way vi works.
+	-The Write command now puts date formatted values in the correct
+	 columns instead of at the beginning of the line ("pline" was
+	 changed to "pline+plinelim" in printfile() function).
+	-Added a check for rfd != NULL in openfile() function so /s
+	 command and writing to a pipe will work again without segfaults.
+	-Notes can be attached to cells, which amounts to providing a link
+	 to a range that can be jumped to quickly.  See man page for details.
+	-Backslash-escaped double quotes now work properly in strings,
+	 such as filenames.
+	-If stdin is not a tty, no attempt is made to write the data to the
+	 screen.  Also, startdisp() and stopdisp() become no-ops, and the
+	 first startdisp() has been moved to just before the main loop.
+	 This allows sc to work better in a pipeline for non-interactive
+	 use.
+	-Implemented vi-like F and T commands for moving backward in
+	 a command line in edit mode.
+	-Deleting to a character in edit mode with dt, df, dT, or dF now
+	 works properly even if the character is not found.
+	-If a cell changes from ERROR or INVALID to a value of 0, the
+	 cell will now be updated properly on the screen without having
+	 to force an update by moving it offscreen and back on or doing
+	 a ^L.
+	-If the denominator of a division operation references a cell
+	 with an ERROR, the result will correctly show INVALID instead
+	 of ERROR.
+	-More "style" changes to code for more consistency, and other
+	 minor changes of little real effect or consequence.
+
+CHANGES BETWEEN 7.2 and 7.3:
+Chuck Martin
+	-Fixed doend() function to prevent occasional lock-ups when using
+	 ^E or the END key.
+	-When outputting formatted data with Write or Tbl, dates formatted
+	 with Fmt are now converted and output correctly.
+	-Makefile has been rewritten, with many unused targets removed,
+	 "clobber" target renamed to "distclean", ${prefix} variable
+	 defined to allow installation directory ${prefix} to be specified
+	 (/usr/local is now the default), among other things.
+	-Added start-up files $HOME/.scrc and ./.scrc for configuration
+	 commands.  New commands added for specifying default filename
+	 extensions are: scext, ascext, tbl0ext, tblext, latexext,
+	 slatexext, and texext.  Also added `set scrc' (see man page).
+	-If the filename ends in either .sc or the user defined extension
+	 for regular sc files (scext - see the man page), this extension
+	 will be stripped first before a new extension is appended by the
+	 Put, Write, or Tbl commands.  If scext is defined, it will also
+	 be appended when saving a file with the Put command if it isn't
+	 already present.
+	-Created temporary string variable for manipulation of filename
+	 when adding/deleting extensions before saving a file, since
+	 there wasn't always room in the existing space.  This also
+	 fixed a bug when expanding `~/' or `~user/' into a user's home
+	 directory.
+	-Expanding `~/' or `~user/' into a user's home directory now also
+	 works with pipes.
+	-Much longer file names are now allowed when adding extensions
+	 on filesystems that allow them.  The actual length allowed is
+	 filesystem dependent.
+	-A filename of `-' can now be used to tell sc to read spreadsheet
+	 data from the standard input.  Also, multiple files can now be
+	 specified on the command line, and they will be merged, with the
+	 default filename being taken from the first one if possible.
+	-Added an "advanced" macro capability, where commands and data
+	 are passed through pipes.  New commands added are: up, down,
+	 left right, endup, enddown, endleft, endright, |whereami,
+	 |getnum, |fgetnum, |getstring, |getexp, |getformat, |getfmt,
+	 recalc, redraw, and quit.  Documentation is still sparse.  Only
+	 available on systems which support pipes.
+	-The mdir command no longer automatically appends a `\' to the
+	 path you enter, so that an actual filename can now be used
+	 (this is handy for advanced macros, which might contain more
+	 than one macro in a file, so you can add command line switches
+	 and arguments to the defined string instead of a filename).
+	-Removed modflag++ from readfile() so sc doesn't assume the file
+	 was changed just because a macro was run.  If a macro changes a
+	 file, modflag will be updated when the change occurs.
+	-Significant digits in the fractional portion of a number were
+	 being lost if preceded by a 0 when the format specification used
+	 #'s.  An "else break;" if a nonzero digit was found when looking
+	 for trailing 0's fixed this.
+	-Decimal points are now suppressed if there are no significant
+	 digits after the decimal point in a formatted number.
+	-The g (goto) command now has an optional second argument when
+	 used for searching that can be used to specify a range to search
+	 instead of always searching the whole spreadsheet.
+	-Range names can now be less than three letters without being
+	 mistaken for column names, and may also contain any mix of
+	 letters, numbers, and underscores, as long as it isn't a valid
+	 cell address and the first character isn't numeric.
+	-Rewrote the evaluation of the `-' and `=' operators and added
+	 an fflush(stdout) to each to force optimizing compilers like
+	 gcc to pop the FPU stack so both sides of the calculation have
+	 the same precision.  Otherwise, comparisons would sometimes
+	 fail when they shouldn't, and subtractions that should be zero
+	 sometimes wouldn't be.  This (differing precision due to the
+	 FPU) also turns out to be the cause of the spurious "Still
+	 changing after x iterations" message, which was fixed previously.
+	-Removed toascii() in several places in nmgetch() to make sc
+	 8 bit clean and suitable for international use (international
+	 characters can now be entered as data in cells).  Also removed
+	 -DINTERNATIONAL from Makefile and elsewhere, since it should
+	 no longer be necessary.
+	-Removed unused ClearScreen variable.
+	-If the -e command line switch is used, rndtoeven is set both
+	 before and after loading the files, so that it will override
+	 the contents of any files loaded.
+	-When editing a cell's existing format string, the cursor now
+	 starts out at the last character instead of after the last
+	 character.
+	-No longer tries to center a range that's wider than the screen,
+	 which was causing lock-ups.
+	-If current cell highlighting is on, turn the cell pointer (<)
+	 off (don't need both) and hide the hardware cursor at the lower
+	 right-hand corner of the screen unless editing a command on the
+	 top line.
+	-Row indicators are now right- instead of left-justified.
+	-Turn off highlighting on row and column indicators for the
+	 current cell so they stand out.
+	-Implemented vi-like e command to go to next end-of-word in edit
+	 mode.  Also, cw now works just like ce, as it does in vi and its
+	 variants.
+	-If deleting the last character in a line, x now backs up as in
+	 vi et al.
+	-Many more minor changes that will probably not even be noticed.
+Michael L. Hall
+	-Don't quote (via a backslash) the "[" and "]" characters in
+	 LaTeX table output.
+
+CHANGES BETWEEN 7.1 and 7.2:
+Chuck Martin
+	-A dummy fflush(stdout) was added to the RealEvalOne() function
+	 to work around a strange bug which causes spurious "Still
+	 changing after x iterations" errors when automatic optimization
+	 of expressions is off (the default).  This still needs a
+	 proper fix.  See the BUGS file for more information.
+	-The goto (g) command now accepts an optional second parameter
+	 which specifies which cell is to be located in the upper lefthand
+	 corner of the screen, if possible.  When saving the file, this
+	 parameter is included in the goto command that brings you back
+	 to where you left off.
+	-The mark (m) command remembers not only which cell the cursor is
+	 in, but also which cell is in the upper lefthand corner of the
+	 screen.  The ` command uses this information when returning to
+	 the cell, but the ' command does not, so you can decide whether
+	 to center the marked cell when returning (') (assuming the cell
+	 is not currently visible) or whether to try to restore it to
+	 its original position on the screen (`).
+	-If the destination of a goto command is a range instead of
+	 a single cell, the whole range is centered on the screen,
+	 if possible, instead of the upper lefthand cell of the range.
+	 Named ranges in the tutorial have been adjusted to use this fact.
+	-If quick numeric entry mode was enabled and you started to enter
+	 a number, then changed your mind and escaped out of it, any
+	 subsequent cursor movement (except h, j, k, or l; i.e. only
+	 control key combinations and cursor keys) would put you back into
+	 insert mode.  Setting numeric_field back to 0 in the stop_edit()
+	 function in vi.c fixed this.
+	-Cursor control keys now work properly while in quick numeric
+	 entry mode if craction is set to other than no action (it used to
+	 follow both desired cursor movement and craction direction).
+	-Implemented vi-like C and s commands in edit mode.  See the man
+	 page for details.
+	-All instances of rndinfinity have been changed to rndtoeven and
+	 all tests have been reversed to make the old rndinfinity behavior
+	 the default rounding method and round-to-even (banker's rounding)
+	 an option.  A new command line switch, -e, allows you to set
+	 rndtoeven when sc is started.	Round-to-even may be superior
+	 for some applications, but it isn't the way most people round
+	 or expect rounding to be done.  Spreadsheets which explicitly
+	 set rndinfinity will display an error when loading, but will
+	 behave as intended and will save without it.  Those which don't
+	 set rndinfinity but depend on the former default behavior will
+	 have to either be started with the -e option or have rndtoeven
+	 set manually the first time they are loaded.  The advantages
+	 of setting rndtoeven for some applications have been added to
+	 the man page.
+	-The craction toggle has been redone (again) to prompt for the
+	 direction you want to move after entering data in a cell.
+	 See the man page for more details.  Also, craction now only
+	 has an effect if data is being assigned to the current cell
+	 (i.e. the command just entered starts with either "let", "label",
+	 "leftstring", or "rightstring").
+	-Placed parentheses around all "OP_BASE + ..." macros in sc.h
+	 to stave off potential problems and increase robustness.
+	-Many more additions, deletions, and changes (too numerous to
+	 mention) to remove unused and unnecessary stuff, fix minor bugs,
+	 and make for more uniformity of style.
+
+CHANGES BETWEEN 6.21 and 7.1:
+Chuck Martin
+	-Converted function declarations and definitions from K&R style
+	 to ANSI style.
+	-Removed unnecessary function declarations for standard library
+	 functions.
+	-Multiple marks (up to 26) may now be set with m and copied with
+	 c.  Marked cells may also be jumped to by using either ` or ' as
+	 in vi.  For now, ` and ' work exactly alike, but this will change
+	 in a later release.
+	-Expressions which resolve to a constant are no longer automatically
+	 optimized by default, but optimization may be turned on if desired
+	 with ^To or the -o commandline option.  This allows you to edit
+	 expressions instead of having to reenter them from scratch.
+	-Rewrote the @dts function from scratch.  It is now Y2K compliant
+	 and allows parameters to be entered in y,m,d order as well as the
+	 old m,d,y order (the proper format is detected automatically).
+	-Removed support for the undocumented feature added previously by
+	 David Fox (sorry, David!) which allowed dates to be entered as
+	 dd_mm_yy and replaced it with a similar feature which allows
+	 dates to be entered as y.m.d or m.d.y.  This is actually just a
+	 shorthand way of entering the @dts function using only the numeric
+	 keypad, providing the year, month and day are all purely numeric
+	 (no formulas), and the year must include the century.
+	-Rewrote the date formatting routine to use strftime() and added a
+	 second date format (format 4) identical to the regular one (format
+	 3), but with a four digit year.
+	-Cells may now contain date formatting strings, entered with F,
+	 which work similar to the standard numeric formatting strings, but
+	 allow all the same conversion specifiers as strftime() to format a
+	 date.  A ^D as the first character in the string is used to
+	 distinguish a date format string from a standard numeric format
+	 string.
+	-^L now redraws the screen as it was instead of attempting to
+	 center the current row.  Added a C command for centering the
+	 current row.
+	-Changed main() in help.c to type int (was void).
+	-Cells in columns pi, ln, fv, pv, and if may now be referred to
+	 in expressions (they previously conflicted with two letter
+	 function names), but the number pi now requires the @ in front
+	 of it to work (@pi).
+	-The Insert and End keys now work.  Insert works exactly like i
+	 and End works like ^E.
+	-Moving up and down half a screen at a time now works much better.
+	-Pressing Escape to exit insert mode now backspaces to be more
+	 consistent with the behavior of vi and its variants.
+	-Moved switch (craction) from ^M/^J part of main input loop to
+	 if clause in cr_line() so that pressing RETURN to enter input
+	 mode won't move you to another cell if newline action is set to
+	 something other than the default no action.
+	-Added a test in deleterow() to prevent segfaults when deleting
+	 too many rows.
+	-^Tr now enters a special toggle mode instead of just toggling the
+	 newline action, since there are three options instead of two.
+	 That way, if you need to toggle twice in a row to get the action
+	 you want you can use ^Trr<RETURN> instead of ^Tr^Tr, which I
+	 think is easier (the second r can be any key except <RETURN>).
+	-Removed a line from the tutorial because the first page was one
+	 line too long for a 24 line screen.  This really needs to be
+	 completely rewritten, IMHO.
+	-There are probably many more bug fixes and other changes including
+	 style changes to make the code look more consistent that I've
+	 forgotten or that I was just too lazy to figure out or document
+	 properly, but they're mostly minor.
+
+CHANGES BETWEEN 6.21 and 6.19
+Mark R. Rubin
+	-noted a problem using bison 1.16 (use any version but 1.16)
+Marco S Hyman/Ian */and others
+	-Crypt/CRYPT_PATH define problem
+Paul Eggert
+	-sc.doc $Revision: 6.21 $ 'buglet'
+Ulf Noren/Dave Lewis
+	-AIX3.1/Microport System V/AT don't have notimeout()
+		changed NONOTIMEOUT to NO_NOTIMEOUT, define if not present
+Niels Baggesen
+	-function keys may not return ascii codes that isascii() understands
+	-added an A command for vi mode (add at end of row).
+	-Special key support: DC='x' (del char in vi mode), FIND='g' (goto),
+		HELP='?', SELECT='m'
+Dave Davey
+	-noted Ultrix 4.2 curses doesn't have idlok()
+		[I added NO_IDLOK in Makefile]
+Kim DeVaughn
+	-added ${RIGHTBUG} is now passed to sc.o && screen.o
+	-suggested a better fix on SunOS 4.x dont use the Sys V
+	 package (CC = /usr/5bin/cc, etc), but use the BSD 4.3 defines
+David Bonnell
+	-scqref [will produce] TROFF output instead of plain text, 
+	 [when] you define QREF_FMT=TROFF in the Makefile.
+	 The resulting quick reference guide uses the MS macro set and you 
+	 build with something like:
+		scqref > quickref
+	 	troff -ms quickref > quickref.ps
+Kurt Cockrum
+	- sc.h:
+		If not (defined(BSD42) || defined(BSD43) && !defined(ultrix)),
+		include <memory.h> for the benefit of some USG systems...
+	- screen.c:
+		Repaired cpp logic:
+		don't mention IDLOKBAD or idlok() unless SYSV3 defined;
+		idlok() does not exist for USG pre-SYSV systems (may exist for
+		SYSV{2,3,4}).
+	- tutorial.sc:
+		Repaired a number of off-by-1 errors.
+Mats Wichmann
+	-cleaned up Robert E. Cousins MIF format support code which is
+		compatible with FrameMaker.
+Neil Skilling
+	-added @numiter which returns the number of iterations performed.
+	 It allows you to solve equations by direct substitution. Taking a
+	 guess from another cell if the first iteration otherwise taking the
+	 last best iterate. Other uses may be found.
+Martin MacLaren
+	-MS-DOS cleanup of Makefile
+Art Mulder
+	-^T toggle: don't list crypt if not available
+John Amanatides
+	-pointed out a possible NULL ref in interp.c
+Phil Johnson
+	-sc now appends: "asc", "cln", "tbl", etc. to output files
+	-made the engineering format match that used by an engineer
+	-deleted an unused engmult[] reference
+	-added a fix to struct enode for the HP compiler
+Kevin Cosgrove
+	-noted sc should use any predefined PI
+Jeff Buhrt
+	-'make clean' now leaves the binaries and man pages [Jean-Pierre Radley]
+	-'make clobber' cleans all built files (like clean used to) [""]
+	-'-D' vs '-S' was needed on a XENIX2_3 line [""]
+	-'quit()' -> 'doquit()', function conflict [""]
+	-change xmalloc,xrealloc,xfree -> scxmalloc,scxrealloc,scxfree
+		(xmalloc is a standard malloc)
+
+CHANGES BETWEEN 6.19 and 6.18
+Tom Tkacik
+	-sc.doc and CHANGES changes
+Edgard
+	-moving right off the screen now redraws vs optimize
+Sisira Jayasinghe
+	- added build.com (VMS) and VMS fixes
+Jonathan I. Kamen && Charlie Shub
+	-noted fmod doesn't exist on BSD4.3 and Mt Xinu 
+Ben Priest
+	-vi compatability: ' ' moves right as well as 'l' while line editing
+Jeff Buhrt
+	-one more possible NULL pointer fixed
+	-added NONOTIMEOUT for those that don't have notimeout() in curses
+	-undef CRYPT=-DCRYPT_PATH... if crypt isn't available
+	-merged simple fmod into interp.c if fmod() is not present
+
+CHANGES BETWEEN 6.18 and 6.17
+James Dugal	
+	- NULL pointer fix for is_locked
+Kevin Pye
+	- add a new mode suitable for entry of large amounts of data.
+		moves to next cell on return, maxrow/col when to start
+		entering in the next row/col. (see help screens B&C)
+	COMMANDS ADDED: ^Tz, ^Tr, Srowlimit=?, Scollimit=?
+David Fox - added a date format so that columns whose values are the number
+	of seconds since 1/1/70 will be displayed as dates in the format
+	dd-mmm-yy, and a modification to the grammar so data entered in the
+	format dd_mm_yy will be converted into the number of seconds since
+	1/1/70.
+	COMMANDS ADDED: f # # 3
+Teus Hagen
+	- labels are centered strings
+	- constant strings with '\' preceeding character will
+	  be wheeled over the column width
+	- a restart of sc on an sc file will go to last used cel
+	- added toupper, tolower and do proper word capitalization
+	COMMANDS ADDED: @toupper(), @tolower(), @capital(), @pi, "\[String]
+Jeff Buhrt
+	- external functions null/previous message was backwards
+	- cleaned up help.c by inserting a new screen
+	- found a possible NULL pointer in screen.c
+
+CHANGES BETWEEN 6.17 and 6.16
+Ulf Noren
+	- added cell locking, disallowing input, to ranges of cells
+Herr Soeryantono
+	- I added ifdef's around curses KEY_* functions his curses didn't have
+		(Sun/OS 4 on a SPARC)
+Jay Lepreau
+	- changes to tutorial.sc: how to get out, should be used w/ 24 lines
+	- IDLOKBAD was not passed to screen.c
+	- suggested error messages if the execl of crypt fails
+	- pointed out BSD's crypt is in /usr/bin/crypt
+Henk P. Penning
+	- suggested Makefile list the mode of the man page & tutorial.sc
+	- make install will now install the psc man
+	- yylval was not known in lex.c for HP-UX 7.05
+Edgard
+	- hitwinch fixes
+	- KEY_HOME now takes you to 0,0
+CHECK KEY_NPAGE/PPAGE
+Stephen (Steve) M. Brooks
+	- suggested the man pages should include Sc's revision
+Dan Banay
+	- code to set LINES and COLS after a window size change
+Bart Schaefer
+	- @myrow/@mycol fix
+Bruce Jerrick
+	- noted ln may not always work for the temporary source files
+Gene H. Olson
+	- fixes for SIGWINCH for Sun OS 4.1.1
+Teus Hagen
+	- added three functions:
+		1) allow @PI as well
+		2) @upper/@lower for casing characters in a string
+		3) @capital for upper case first char of words in a string.
+Martin Maclaren
+	- added MS-DOS support
+		COMPILER USED: Microsoft C, 5.1
+		TOOLS USED   : NDMAKE GNUBISON GNUSED PCCURSES
+Cuong Bui
+	- has a working Vietnamese version of sc, noted a A_CHARTEXT
+		mask problem
+Jeff Buhrt
+	- when numeric prescale is on: 300 -> 3.0, now 300. -> 300. not 3.0
+		(numbers with a decimal aren't scaled)
+
+CHANGES BETWEEN 6.16 and 6.15
+Tom Tkacik
+	-fixed a bug in ^W
+Jonathan I. Kamens
+	- added Makefile rules so scqref and psc don't clobber .o's
+Larry Philps
+	- fixed a SCO XENIX vs M_XENIX problem
+	- fixed a problem where dosval() might not xmalloc enough memory
+Dave Close
+	- fix for Xenix 2.3 to reset terminal modes
+
+CHANGES BETWEEN 6.15 and 6.14
+Lowell Skoog
+	- fixed a bug in 'F'ormat
+Henk Hesselink
+	- format.c double neg. sign 
+	- interp.c minr/minc bug, plus modflg wasn't set
+	- fixed a hardcoded path in sc.doc
+	- improvement: 
+		-show current cell format in top line
+		-[buhrt: go into edit mode on the old format if it existed
+			otherwise insert mode]
+Jonathan Crompron
+	- made sure doformat() does a checkbounds()
+Stephen (Steve) M. Brooks
+	- pointed out -s in psc was broke
+Michael Richardson
+	- fixed negative numbers in exponential format
+
+CHANGES BETWEEN 6.14 and 6.13
+Mats Wichmann
+	- Sys V R4 patches, fixed 'Press RETURN ...' on a shell command
+Tim Theisen
+	- changed #define for memcpy/memset under ultrix
+Rick Walker
+	- Added @myrow and @mycol to give the row/col of the current cell
+	'The two functions are @myrow and @mycol, which return the numerical
+	row and column of the calling cell.  The cell directly above a cell
+	in the D column could then be accessed by @nval("d",@myrow-1).'
+	NOTE: @myrow and @mycol can't be used in specifying ranges.
+
+CHANGES BETWEEN 6.13 and 6.12
+Rick Walker
+	- pointed out a move(x,y)-> (y,x) in sc.c
+Glenn Barry
+	- Further SunOS 4.X cleanups
+Tom Tkacik
+	- made sure 'J' moves downward 1/2 a screen even at the bottom
+David I. Dalva
+	- pointed out crypt may not be in /bin/crypt
+Gregory Bond
+	- allows the vi-mode editing of very long expressions
+		(> 1 screen width) to work on 2nd + subsequent lines
+Tom Anderson
+	- "let A1 = aaa" (where aaa is defined as A0:A0) is now valid
+	- added autolabeling
+		'When there is an empty cell to the left of a cell that has
+		just been defined (with /d), a label is created in the blank
+		cell.  The label holds the definition that has just been
+		created.  This labeling is only done for definitions of single
+		cells (and not for ranges).'
+		'The feature can be turned on and off with a toggle (^T)
+		command'
+Petri Wessman
+	- Added support for SLaTeX, 'a Scandinavian version of LaTeX, in
+		intensive use ... in Finland and in Sweden'
+Jeff Buhrt
+	- vmtbl.c explictly set arrays of pointers to NULL, vs memset()
+	- psc   [-P] plain numbers only:a number only when there is no [-+eE]
+		[-S] all numbers are strings
+	- psc: a number must end in [0-9.eE] anything else makes it a string
+		(4, 4., 4.5, and 4e are numbers; 4-, 4+, etc are not).
+	- psc: made sure we grow enough when we call growtbl()
+	- cleaned up the Makefile w/ a few suggestions
+	- SIGWINCH is delt with next time the screen would update (testing)
+	- added IDLOKBAD to get around a SysV curses bug (see Makefile)
+	- moved screen functions into screen.c (except for one indirect
+		'repaint()' call in sc.c, and help.c)
+
+CHANGES BETWEEN 6.12 and 6.11
+James Dugal
+	- added format.c to SRCS in Makefile
+	- noted RETURN didn't enter insert mode
+Peter King
+	- pointed out iscntrl is broken on some other systems as well
+	- sent some lint cleanups
+Michael Richardson
+	- patch to stop format looping when scientific notation was selected
+Glenn T. Barry
+	- code to turn on hardware scrolling and added 'slow speed display'
+		speedups, default for SYSV3 or see -DSUNOS41SYSV in Makefile.
+Tom Tkacik
+	- fixes to make sure J and K move same amount, and re-added H code
+Jeff Buhrt
+	- fixed a possible xfree(NULL) in getent() (found when adding K_VAL)
+	- merged compiler cleanups
+*	- added $(name)qref to print a Quick Reference card
+	- got rid of INVALIDS that may have been left around
+*	- pressing return on a empty line puts you into insert mode
+		(like in <=Sc6.1). When entering you can also press ESC
+		to go into the editor (no change); this is also documented
+		now so it might stay around this time.
+
+CHANGES BETWEEN 6.11 and 6.10
+
+Jonathan I. Kamens
+	- sc.doc now mentions the tutorial file in the FILES section
+Andy Fyfe
+	- pointed out 3 locations where a NULL should have been '\0'
+Robert Bond
+	- pointed out the ERROR could hide a cellerror
+Piercarlo Grandi
+	- H,J,I,K now move 1/2 screen
+Ulf Noren
+	- changes for AIX V3.1
+		- defined CHTYPE and NLS for the preprocessor. CHTYPE is
+		the type of every character in a curses window.
+		- Added KEY_BACKSPACE to nmgetch
+		- strtof ifdef
+	- Iteration change: when Sc says: "Still changing after 9 iterations"
+	Sc at that point will have eval'd 9 times
+Chris Metcalf
+	- pointed out I broke setlist when adding 'goto {error,invalid}'
+James P. Dugal
+	- iscntrl() wasn't handling TABS though CRs under Pyramid OSx4.1
+Peter King
+	- BROKENCURSES patch for nl()/nonl() bug on some BSD systems
+	- backups, tutorial file, and man references now depend on $name
+	- DFLTPAGER to DFLT_PAGER fix
+
+CHANGES BETWEEN 6.10 and 6.9
+
+Tom Tkacik
+	- when moving off the current table (resizing) now move the cursor
+		on 'l' or 'k'.
+	- patches to sc.doc to correctly format the vi-mode notes
+Jim Clausing
+	- made sure / doesn't try to divide by zero.
+Tom Kloos
+	- correction to substr() example in help.c
+Piercarlo "Peter" Grandi
+	- Disable non-constant expressions while loading
+	- Added extra code in dealing w/ floating point exceptions
+	- #ifdef'd SAVENAME (vs hardcoded SC.SAVE) to allowing changing the
+		emergency save name.
+Casey Leedom
+	- Makefile changes: man extension, RINT note, make values should
+		never be left undefined and then referenced, don't leave
+		around *.old's
+Tom Anderson
+	- patches to add type of column format (note format now has 3 args)
+Jeff Buhrt
+	- xmalloc/xfree fatal() will now call diesave()
+		(MAKE SURE the saved file is ok if this were to happen)
+	- history[] is now a circular queue, this will cut down on the
+		number of data moves and also xmalloc/xfree calls
+		(idea from Keith Bostic)
+	- cells with an error (ex: divide by 0) will show 'ERROR'
+	- you can 'goto error' (or 'goto') to find an ERROR (for next ERROR)
+Robert Bond
+	- When in numeric mode the ^B, ^F, ^N, ^P key will end a numeric entry.
+
+CHANGES BETWEEN 6.9 and 6.8
+
+Jim Richardson
+	- pointed out vi mode was not documented in sc.doc
+	- found a nasty buffer limit bug in savedot()
+	- a side effect was ^D could cause a core dump (-Jeff)
+Tim Wilson
+	- Hints on compiling on Ultrix
+Eric Putz
+	-patch for printfile() (sc died on huge # of columns in a W)
+Jeffrey C Honig
+	-patch for lex.c which bombed on SunOS 4.1 if $TERM was not set
+Tom Kloos
+	-psc now calls [+-.] strings vs numbers.
+	-also pointed out a format reversal problem
+Jack Goral
+	-changes to Makefile to compile under SCO Unix V rel 3.2.0
+Mark Nagel
+	-changes to allow arbitrarily complex formatting of cells 
+Kim Sanders
+	-^W generated an incorrect equation (line was not started at beginning)
+Mike Schwartz
+	-a put command will use the same encryption key as when the
+	file was read.
+	>I have a suggestion for making the encyrption option of "sc" more
+	>usable:  Right now, if you use the -x option when you start up sc, it
+	>prompts you for the key (just like "vi -x" does).  But when you try to
+	>write the file out using the Put command, it asks for the key again
+	>each time.  Why not make it use the same key you used before (as "vi
+	>-x" does)?  That would really help, because as it is, each time you try
+	>to save the file you run the risk of mistyping the key.
+	>
+	>You might think this causes a security problem, since the key is then
+	>an argument to crypt, and hence is visible from ps.  But when crypt
+	>runs, the first thing it does is to copy the key to an internal buffer
+	>and then zero out the argv copy, so the window of vulnerability is
+	>vanishingly small.
+Adri Verhoef
+	- pointed out a ^D caused a core dump (fixed)
+Gene H. Olson
+	- format now grows the spreadsheet before setting the column format.
+	- removed an extra ';' that caused a possible column number trashing
+Paul Eggert
+	-sc now also has round-to-even, also known as ``banker's rounding''.
+	>With round-to-even, a number exactly halfway between two values is
+	>rounded to whichever is even; e.g. rnd(0.5)=0, rnd(1.5)=2,
+	>rnd(2.5)=2, rnd(3.5)=4.  This is the default rounding mode for
+	>IEEE floating point, for good reason: it has better numeric
+	>properties.  For example, if X+Y is an integer,
+	>then X+Y = rnd(X)+rnd(Y) with round-to-even,
+	>but not always with sc's rounding (which is
+	>round-to-positive-infinity).  I ran into this problem when trying to
+	>split interest in an account to two people fairly.
+	-While we're on the subject, @round(X,Y) should also work when Y
+	>is negative. For example, @round(123,-2) should yield 100.
+
+
+CHANGES BETWEEN 6.8 and 6.7
+
+Jeff Buhrt (with help from some beta testers-Thank you)
+	  1) added a per row memory allocation
+		-runs in about 1/2 run time and 1/3 the space of 6.6vm.1
+		-insert/delete row now just moves pointers (# == maxrow+1-currow)
+			and blanks one row (of columns (maxcol))
+		-as the number of cells grows the size is more linear
+			(no more ##Meg images except for 100,000's of rows....)
+		-row to column pointer translation is done by a macro (ATBL)
+			that returns a pointer to the cell pointer.
+			*ATBL would be a pointer to a *ent (cell).
+		-the maximum # of columns is limited by ABSMAXCOLS or
+			sizeof(struct ent *)*maxcols (whichever is smaller)
+			(702 * 4 = 2808 is no real limit even for 286 large model)
+		-the maximum # of rows is limited by the virtual memory limit or
+			sizeof(struct ent **)*maxrows (whichever is smaller)
+			(4*X=64k, X=16384 rows (excluding malloc overhead) on
+				a '286 large model. Even w/ 3.25Meg and 10Mhz)
+			(plus of course any memory used for cells)
+	2) dolookup (int vs double)
+	3) dolookup calling eval w/ ent * not enode *
+		 (dolookup called w/ ent * not enode *)
+	4) cleaned up a lot of .... *x = 0 to  (.... *)0 (cmds, interp)
+	5) psc: fwidth/precision were reversed on the output
+	6) Backup copy (on save) using same mode to [path/]#file~
+		 (will prompt if a backup fails)
+	7) put y/n prompt function into yn_ask(mesg)
+	8) found a move(x,y) in sc -> move(y,x) and only move when needed
+	9) we use FullUpdate || changed (to see if ANY cells changed) 
+		before trying to redraw the screen in update
+		(now we don't try to redraw every time a key is hit)
+		-if we are stand[ing]out we do not create a cell just to force a
+		 standout inside the repaint section of update()
+		-only draw blank cells if we cleared it or it is standing out
+		reason: the less work (what to update) curses has to do, the faster
+			a screen update will be (less cpu required)
+	14) {insert, delete}col replaced w/ {open,close}col(currow, numcol_to_insert)
+		(limits looping)
+	6.7.1.1
+	15) goto nonexistant cell may loop
+	16) make sure that startup size will at least fill the screen w/ cells.
+	17) added version.c
+	6.7.1.2
+	18) When we would normally die w/o saving (SIGQUIT, etc), we now ask
+		if people would like to save the current spreadsheet.
+		If 'y', saves to the current file name, otherwise ~/SC.SAVE,
+		then /tmp/SC.SAVE if all else fails.
+	6.7.1.3
+	19) don't use malloc.c for production code
+	20) progname is now truncated to just the basename (systems w/ long paths
+		caused problems)
+
+CHANGES BETWEEN 6.1 and 6.7
+
+Dave Lewis - 
+	Found and fixed a null pointer derefrece in the 'R' command.
+
+Rob McMahon -
+	Changed the ctl() macro to work with ANSI style compilers.
+	Cleaned up some non-readonly text problems.
+
+Rick Linck -
+	Fixed a bug in lex.c - Ann Arbor Ambassadors have long ks and ke
+	termcap entries.
+
+Sam Drake -
+	A fix for undefined C_* symbols in AIX.
+
+Peter Brower -
+	Cleaned up the INTERNATIONAL ifdefs with more portable code.
+
+Glen Ditchfield
+	Cleaned up a problem in crypt.c when the encrypted file shrank.
+
+Bob Bond -
+	Vi style editing for the command line.
+	A bug in range name aliases.
+
+Jeff Buhrt -
+	-Added "~" filename expansion.
+	-702 columns (A-ZZ) and unlimited rows/cells based on max. memory
+	-fixed a few bugs
+	-slightly decreased CPU usage
+	-MAKES backup copies of files
+	-understands ~$HOME stuff
+
+CHANGES BETWEEN 5.1 and 6.1:
+
+Andy Valencia -
+	xmalloc aligns data to a double boundary.
+
+Lawrence Cipriani -
+	Fixed a bug in the "do you want to save this" sequence.
+
+Soren Lundsgaard -
+	A null pointer derefrence.
+
+Rick Perry -
+	Cleaned up a problem with modchk() in sc.c.
+
+Gregory Bond -
+	Added code for multi argument versions of @min and @max.
+
+Tad Mannes -
+	Added code to save/restore hidden rows and columns when the
+	data base is saved or restored.
+
+Marius Olafsson -
+	INTERNATIONAL changes.  Allows full 8 bit characters (if
+	curses supports them.)
+
+Kurt Horton -
+	Added support for @pv, @fv and @pmt financial functins.
+	Tested lots of different systems, linting.
+
+John Campbell -
+	Support for VMS.  See VMS_NOTES.
+
+Peter King -
+	 User selection of row or column order for recalculation.
+		Also affects order of traversing regions in /f and /r
+	 User setting of automatic or manual recalculation.
+	 User setting of number of times to try recalculation.
+	 + and - commands when in non-numeric mode to do 
+		increment and decrement operations.
+	@index, @stindex, @atan2, @lookup  functions.
+	Save/restore options.
+	Support for TeX, LaTeX, and better support for tbl in "T" cmd.
+	Provision of a copyent function to copy entries (same code repeated
+		in several locations)
+	Forwrow, backrow, forwcol, backcol functions to replace
+		repeated code
+	Correct interpretation of ESCAPE or ^G as an abort when in a 
+		two character command such as 'ar' or 'ac'
+	Cleanup in eval() - catches non-trap function errors.
+
+Bob Bond - 
+       Added search options to "g".
+       Added supression of hidden columns to "W"
+       Added the mod operator "%"
+       New help functions.
+       Constant prescale "$"
+       Added string matching to @lookup.
+       Some more bug fixes.
+       Testing, integration, documentation.
+
+Alan Silverstein-
+	Greatly revised the manual entry.
+	Added menus for ^E command and row/column commands, which
+	involved a bunch of code cleanup.
+
+	Changed top row display to clearly indicate string labels
+	versus number parts, and to distinguish string functions from
+	constant labels.
+
+	When the character cursor is on a cell (not topline), ^H
+	(backspace) is like ^B (move back one cell), rather than being
+	ignored.
+
+	When the character cursor is on a cell (not topline), ^I (tab)
+	is like ^F (move forward one cell), rather than being ignored.
+	^R is no longer identical with ^L.  Now ^R highlights all cells
+	which should be entered by a user because they contain constant
+	numeric values (not the result of a numeric expression).
+
+	Added a ^X command, similar to ^R, which highlights cells which
+	have expressions.  It also displays the expressions in the
+	highlighted cells as left-justified strings, instead of the
+	label and/or value of the cell.
+
+	Added indirection functions (@nval() and @sval()) for simple
+	table lookups.  Given a column name and row number, they return
+	the numeric or string value of the selected cell.
+
+	Added external functions (@ext()) for non-trivial
+	computations.  Given a command name and argument, it calls the
+	command and reads back one output line.
+
+	Added a ^T,e command to toggle enabling of external functions.
+
+	Changed ^T,t to only control the top line display, and added
+	^T,c to control current cell highlighting.  (Separated the
+	functions.)
+
+	"!" (shell escape) gives a vi-style warning if there were any
+	changes since the last write.  (No change to manual entry.)
+
+	Fixed some startup, error, and prompt messages to be cleaner
+	and/or more consistent.  (No changes to manual entry.)
+
+	Fixed a bug:  If @substr() upper bound (third parameter) is
+	past the end of the string operand, return the substring
+	through the end of the string, rather than returning a null
+	string.
+
+	Fixed a bug:  Reset SIGINT to default after forking before
+	calling shell escape program and before starting pipeline (for
+	commands which support this).  Didn't reset SIGINT before
+	calling crypt and external functions because in both cases it
+	should be irrelevant.  (No change to manual entry.)
+
+CHANGES BETWEEN 6.1 and 6.2:
+
+
+Chris Cole-
+	Compatibility with Lotus 1-2-3
+		a) @hlookup(expr,range,expr)
+		b) @vlookup(expr,range,expr)
+		c) @round(expr,expr)
+		d) @if(expr,expr,expr)
+		e) @abs(expr)

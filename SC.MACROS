@@ -1,0 +1,368 @@
+One of the coolest features new to sc 7.3 is the ability to write advanced
+macros in your favorite language.  I haven't had time to document this
+feature properly (I'm hoping to do a separate man page), but until I can,
+I decided to write a basic overview of how this feature works, and let
+people experiment with it.  Any comments, questions, or suggestions are
+welcome.
+
+Basically, the way the new macros appear to sc is no different than the
+old style macros, apart from the additional commands.  On the other side,
+however, they are as different as night and day.  The old style macros are
+basically just text files containing sc commands in the same form that they
+would be stored in a plain spreadsheet file.  There is no difference between
+reading a macro file and reading a spreadsheet file, and they can both
+contain the same commands.  This is very limiting because there is no way
+to create a loop or branch to another part of the macro or execute certain
+commands only under specific conditions.
+
+Advanced macros allow you to do all this and more.  An advanced macro is
+nothing more than an executable program that outputs sc commands on stdout
+and reads information back in on stdin.  All decision-making, looping, etc.
+is done within the macro program, rather than within sc.  This means that
+you have all the power of whatever language you prefer when programming
+macros.
+
+A few additional commands have been added to request specific data from
+sc.  I call these "pipe commands", since they cause sc to pipe data back
+to the macro program.  The pipe symbol (|) that used to precede these
+commands is no longer necessary, starting with version 7.13.  The command
+is echoed or printed to stdout, and the result is read from stdin in the
+form of a newline-terminated string.  If the result contains multiple
+values, they will be separated by spaces.  Most of these commands take an
+optional argument specifying a cell or column you are requesting information
+from.  If this argument is missing, the current cell or column will be used.
+
+A few more commands have been added to do things that are easily done from
+the keyboard, but which previously had no specific commands that could be
+used to do them from a macro file.  These include such things as moving
+around the spreadsheet using h, j, k, l, or the cursor control keys, or
+forcing recalculation of the spreadsheet using @.  Here is a list of the
+new commands, along with a description of each one:
+
+
+Pipe Commands:
+--------------
+
+  whereami
+
+    This command tells sc that you would like to know where you currently
+    are in the spreadsheet.  The response will be the address of the cur-
+    rent cell followed by the address of the cell in the upper left-hand
+    corner of the screen, separated by a space.  If this line is appended
+    to the string "goto ", it can be used to restore the cell cursor to
+    its original position.  It can also be parsed to find out which row
+    and column you're in, which can be used for whatever purpose you want.
+
+  getnum
+
+    This command tells sc that you would like the number contained in a
+    given cell.  Each cell in sc can contain both a numeric portion and a
+    string portion, and one of those, but not both, can be in the form of
+    an expression.  This command requests the numeric portion.  If the
+    numeric portion is an expression, this will return the calculated
+    value, rather than the expression.  The result will be returned in the
+    form of a newline terminated string formated with "%.15g", which is
+    the same format that is used to store a numeric value in a spreadsheet
+    file, unless it's in the form of an expression (remember, sc files are
+    text files).  When followed by a cell address (e.g., `getnum b23'),
+    it will return the number from that cell.  Specifying a range instead
+    will return the number from each cell in the range, one row per line,
+    with the values separated by tabs (an empty cell will be represented
+    by two consecutive tabs with nothing between).  With no arguments,
+    the number from the current cell will be returned.  If a cell contains
+    an error, the string "ERROR" or "INVALID" will be returned.
+
+  fgetnum
+
+    This command works exactly like getnum, except that the format used
+    to return the value is the same as that used to format it for display
+    on the screen.  In other words, if the cell uses a date format, a date
+    will be returned.  If the cell is formatted for scientific notation,
+    that's what you'll get back.  The only exception is that if the for-
+    matted result happens to be wider than the cell, you won't get a string
+    of *'s back.  Instead, you'll get a result that is wider than the cell
+    it's contained in.  Like getnum, you can use this by itself to get the
+    number from the current cell, or with a cell address or range as an
+    argument.  If a cell contains an error, the string "ERROR" or "INVALID"
+    will be returned.
+
+  getstring
+
+    Like getnum and fgetnum above, this command requests data from sc.
+    However, what is requested (and returned) is the string portion of
+    the cell.  If the string portion of the cell is an expression, it will
+    be evaluated, and the result of that evaluation will be returned.
+    getstring may be used to get the data from the current cell or from
+    a specified cell or range, just like getnum and fgetnum above.
+
+  getexp
+
+    If either the numeric portion or the string portion of a cell is in the
+    form of an expression, this will return that expression.
+
+  getformat
+
+    This command will return a string containing the three numeric values
+    that specify the format of the given column, or the current column if
+    none is given.  This is the format specified by the f (format) command.
+
+  getfmt
+
+    This command will return the format string for the specified cell
+    (or cells, if a range is specified), or for the current cell if no
+    arguments are given.  This is the format specified by the F (fmt)
+    command.  It may be either a standard numeric format or a date format.
+
+  getframe
+
+    This command will return the outer and inner ranges, respectively,
+    of the framed range containing either the specified cell, if given,
+    or the current cell, otherwise, separated by a space.  If the cell
+    is not inside a framed range, an empty string will be returned (in
+    other words, just a lone newline).
+
+  status
+
+    This command will return a set of flags to show information about
+    the current state of the program or the file.  Currently, there are
+    three flags implemented:
+
+        m  If the string returned contains an `m', the file currently
+	   in memory has been modified.  If no `m' is present, the
+	   file has not been modified.
+
+        i  If the string returned contains an `i', stdin is currently
+	   connected to a terminal.  Otherwise, stdin has been redirected
+	   to a file or pipe.
+
+        o  If the string returned contains an `o', stdout is currently
+	   connected to a terminal.  Otherwise, stdout has been re-
+	   directed to a file or pipe.
+
+  query
+
+    This command can be used to obtain information from the user.  An
+    optional string argument will be displayed on the second line of
+    the display to ask the user a question or present an informational
+    message.  For example, 'query "Please enter today's sales."' will
+    display the message on the second line, and wait for the user to
+    enter the appropriate information on the top line.  If a second
+    string argument is present, it will be used as a default response
+    which the user can accept as is, add to, or edit.  The user may
+    switch from insert mode to edit mode, navigate mode, etc., and may
+    use any of the vi-style editing commands or operations that are
+    available during input of regular sc commands, including the use of
+    the command line history.
+
+  error
+
+    Displays a specified string on the second line of the display.  The
+    string argument is required, but may be empty ("").  This command
+    is intended for displaying error messages from a macro, but may be
+    used to display other informative messages as well.
+
+  eval
+
+    This can be used to send an expression directly to sc for evaluation
+    without entering it into a cell.  An optional second parameter can
+    be used to specify formatting information.  For example, the following
+    line could be used in a shell script:
+
+        echo eval a49-c53 "0.00"
+
+    You can then read the result in from standard input.  If you want to
+    know the number of the current column without having to convert the
+    column name yourself, you can let sc do it for you by sending the
+    command "eval @mycol" and reading the answer back from sc.  You can
+    also use this in non-macro shell scripts.  For example, the following
+    line could be used to calculate the area of a circle to four decimal
+    places:
+
+        AREA=`echo eval @pi*$RADIUS^2 \"0.0000\" | sc -q`
+
+  seval
+
+    This works like eval, except that it evaluates string expressions
+    instead of numeric expressions.  For example, the following line
+    could be used in a shell script to convert a column number to its
+    name (e.g., 5 would be converted to F):
+
+        echo "seval @coltoa($COLNUM)"
+
+    The quotes are necessary in this case to prevent the shell from
+    using the parentheses for its own purposes.
+
+
+Other Commands:
+---------------
+
+  up
+  down
+  left
+  right
+
+    These do just what you would expect.  They move the cell cursor in
+    the specified direction.  You can also use an optional numeric argu-
+    ment to move the specified number of cells in the given direction.
+    For example, `down 7' will take you to the cell seven rows below the
+    current cell.
+
+  endup
+  enddown
+  endleft
+  endright
+
+    These also do what you would expect.  For example, if you're in the
+    middle of a long column of data, and you would like to jump to the
+    bottom of the column, but you don't know where the column ends, using
+    the enddown command will take you there.  This works exactly like the
+    END key (or ^E) followed by a cursor movement key.
+
+  insertrow
+  insertcol
+  openrow
+  opencol
+  deleterow
+  deletecol
+  yankrow
+  yankcol
+
+    These commands insert, delete, or yank rows or columns, just as if
+    the user had pressed `i', `o', `d', or `y'.  If you want to insert,
+    delete, or yank more than one row or column, follow the command with
+    `*' and a number; e.g. `insertrow * 5' will insert five rows before
+    the current row.
+
+  pull
+  pullrows
+  pullcols
+  pullxchg
+  pulltp
+
+    These commands pull cells from the delete buffer into the current
+    location in the spreadsheet.  They perform the same actions as the
+    `pm' (pull), `pr' (pullrows), `pc' (pullcols), `px' (pullxchg), and
+    `pt' (pulltp) user commands.
+
+  recalc
+
+    This works like the @ command.  It forces recalculation of the
+    spreadsheet.  Note that automatic recalculation is turned off tem-
+    porarily while executing a macro (for speed), so you will need to
+    use this command if you want to present current data to the user
+    before the macro is complete.  You will also need to use the redraw
+    command to write the recalculated data to the screen.  Since recal-
+    culation is turned back on after the macro is complete, this command
+    will not be necessary at the end of a macro.
+
+  redraw
+
+    This command works like ^L, and redraws the screen.  You may have
+    to use the recalc command first if you want the data to be current.
+    Note that screen updates are not performed during macros (for speed),
+    so you'll have to use this command if the data have changed in any way,
+    and you want the user to see those changes.  If your macro writes
+    directly to the screen at any time to display messages or otherwise
+    interact with the user, you will need to use this command to restore
+    the spreadsheet to the screen when the macro ends.
+
+  quit
+
+    This command causes sc to immediately exit.  It does not prompt the
+    user for confirmation or ask if the data should be saved if it has
+    been modified.  You will need to do that from the macro, if necessary.
+    Use this command with caution.
+
+
+Now that you understand the new commands (and hopefully the old ones, too,
+although you'll have to figure those out on your own; hint: watch the top
+of the screen as you enter data and execute other commands, and look at
+the contents of a few spreadsheet files), a few hints are in order.
+
+First, it is perfectly okay to write directly to the screen, although,
+since stdin and stdout have been redirected, you'll have to use another
+method of doing this.  From a shell script, for example, you can redirect
+stdin and/or stdout to /dev/tty on a command by command basis.  Remember
+that even a command like clear sends special codes to do its job, so you'll
+need to use redirection to make it work.  For example, to clear the screen,
+use `clear >/dev/tty'.
+
+If you have the dialog or cdialog program, you can use these to interact
+with the user.  Just redirect stdin and stdout with `<>/dev/tty' for each
+dialog command (or what might be better is to open a file descriptor once
+with something like `exec 3<> /dev/tty' and use that for communicating
+with the user).  You can also use the tput, echo, and read commands with
+redirection to read and write the top two lines of the screen for inter-
+action with the user.  For example, `(tput cup 0 0; tput el) >/dev/tty'
+will position the cursor on the top line and clear the line.  You can then
+use the echo and read commands to ask the user a question and read the
+answer.  Just remember to redraw the screen after using any commands
+that write directly to the screen (now that the query command has been
+implemented, you probably won't be doing it this way, but the capability
+is there, anyway).
+
+Although the examples above are for shell scripts, similar methods can be
+used from any language.  I'll leave the exact implementation for various
+other languages as an exercise for the reader.
+
+Testing macros outside of sc in most cases is very easy, since they read
+and write stdin and stdout.  All you have to do is run the program and
+feed it information from the keyboard that it would otherwise get from
+sc.
+
+Once you've written and tested your macro, you can try it from within sc.
+Make sure the file is executable, and then use the R command to run it.
+Make sure you precede the name with a `|'.  You can use D to define
+the macro directory, although this no longer needs to actually be a
+directory.  It can be the name of your macro file, including the path,
+preceded by a `|' so that it will be executed as a program.  If you
+include a trailing space, you can then add command line arguments or
+options when running it with R.  This allows you to include several
+macros in the same file, and use the command line to determine which
+macro to run.  Alternatively, you could use the whereami command to
+determine where the user is at in the spreadsheet, and run a different
+macro depending on which region of the spreadsheet the macro is being
+run from.  Use your imagination.
+
+Since the macro is a program, you can import data from any source you
+want.  You could get information from the Internet, read it from custom
+hardware connected to the serial or parallel port (or your own custom
+interface), or pull it from a file created by another program.  You
+could cause your macro to react to the phase of the moon or whether the
+date is even or odd, if you want (although your users might not like
+that very well).  Basically, you can do anything you want.  I'd be
+interested in hearing of some creative uses of macros.
+
+Here's some additional information about the pipe commands.  Although it
+is no longer necessary to include the pipe symbol at the beginning of the
+"pipe" commands, you may still append it to any of these commands,
+follosed by file descriptor as before (e.g. `whereami | fd', where fd is
+a file descriptor).  I've used this for testing by using a file descriptor
+of 1, which will write the information to the screen, or a file descriptor
+of 2, which will write the information to stderr, which I then redirect
+to another virtual terminal or a file.  This may also be used in a pipe-
+line to pass data from sc on to the next command (or to a file, through
+redirection).  For example, if you create an sc spreadsheet on the fly
+and pipe it to sc, you could add the following lines to the end of the
+spreadsheet:
+
+    getfnum D49:G73 | 1
+    quit
+
+This will cause the formatted numeric data from the range D49:G73 to be
+piped to the next command, tab-delimited, one row per line.  Also, if
+you're using simple macros (the old-style "list of sc commands in a text
+file"), no pipes are created, and the default file descriptor for the pipe
+commands is 1 (or stdout).  Make sure you include the quit command, or sc
+will become interactive after receiving all of the data from the pipeline.
+
+If anyone finds another use for this way of using the pipe commands,
+please let me know, and I'll add it to the documentation in the next
+version.
+
+I'm hoping to eventually include better documentation for macros, preferably
+in a man page.  In the meantime, enjoy the new capability, and send me any
+comments or suggestions for the next release.
+
+Chuck
+<cmartin@bigfoot.com>

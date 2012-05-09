@@ -1,0 +1,235 @@
+This is a much modified version of the public domain spread sheet sc,
+originally by James Gosling, and posted a number of years ago by Mark
+Weiser as vc.
+
+The current maintainer is Chuck Martin (cmartin@bigfoot.com).  I
+originally got involved with sc because I wanted a good text-based
+spreadsheet program, and nothing I could find seemed to suit my needs.
+After looking at several different programs, I settled on sc as the
+program with the most promise, especially since source code was available,
+which meant I could modify it to add the features I needed.  Since it
+appeared that no one was maintaining it anymore, I decided to take up
+the cause myself.
+
+You'll want to look at the CHANGES file and the man page for more
+complete information about what I've done to sc, but here are some of
+the highlights:
+
+   - A Y2K bug fix in the @DTS function.
+   - Advanced macros (see the file called SC.MACROS).
+   - The ability to use sc in a pipeline.
+   - Note attachments (implemented as a link to a range).
+   - Dotfiles for start-up configuration.
+   - Programmable function keys.
+   - Framed ranges (similar to Lotus 1-2-3's "Titles" or Excel's
+     "Freeze Panels," but much more powerful and versatile).
+   - Colors (very powerful implementation).
+   - Sorting of ranges.
+   - Range name completion (using the TAB key).
+
+Although I've already added all of the "must have" features I needed,
+and then some, I'm willing to continue maintaining sc for as long as I'm
+able, and I'll certainly share any new features and bugfixes I come up
+with.  If anyone else finds any bugs or would like to contribute patches,
+please send them to me.  If they're useful and they work, I'll probably
+add them.  I prefer to keep it simple, though, since that's what drew me
+to sc instead of some other "full-featured" spreadsheet in the first place.
+I like the Unix philosophy of making each program do one thing and do it
+well, and would rather leave all the fancy graphics and other features to
+other programs that are better suited for them.
+
+I've finally renumbered the TODO list, but all of the items in there were
+placed there by someone else (except for the undo feature), and I'm not
+sure what all of them mean.  If anyone else feels like tackling some of
+them (like maybe whoever put them in there), feel free to do so.  I've
+never used uemacs, so I'll definitely not be adding the uemacs stuff myself.
+The vi key bindings suit me fine.  I've added undo to the TODO list, but I
+won't make any promises as to when (or if) I will get to it.  If anyone else
+would like to tackle it, feel free to do so.
+
+I've tried to avoid changing key bindings any more than necessary because
+it could be confusing to people who have been using sc for years if the
+keybindings suddenly change, but in version 7.13, I've finally decided to
+change a few things for more compatibility with vi, so that it will be
+easier to move back and forth between the two programs.  For example,
+the ^F and ^B keys now work like J and K (or PageDown/PageUp).  Also,
+the " key is no longer used for entering centered labels because I'm
+planning on implementing multiple numbered and/or named delete buffers,
+and I wanted that key for selecting buffers, as it does in vi.  I hoped
+to have that implemented for version 7.13, but haven't had the time, so
+it will have to wait for 7.14.  In the meantime, " does nothing, and the
+\ key will take its place for entering centered labels.  This will also
+make it easier to enter a so-called "wheel" for filling a cell with a
+character or string, since you'll begin such a string by pressing \ twice.
+Also, most keyboards have the "\" and "|" on the same key, which should
+make it easy to remember because | is already used for centering an existing
+string.  I'm sure someone will let me know if this causes any problems. :)
+
+By the way, I'd like to make it clear that sc is not "my" program.  That's
+why I haven't placed "my" versions under the GPL, BSD, MIT, or any other
+free or open source type license.  I would welcome any input from users of
+sc concerning the changes I've made.  Are they useful?  Are there better
+ways that some of these changes could have or should have been implemented,
+either in programming or in the user interface?  Would there be any interest
+in a mailing list to discuss these things?  (I'm not saying that I have the
+time to maintain such a list, but it would certainly help to be able to
+bounce my ideas off of someone who's actually using the program before
+making changes that others may not like.)
+
+Speaking of mailing lists, I've been asked if there is a mailing list
+to announce new versions (something totally separate from the suggestion
+in the previous paragraph).  Since there isn't much involved in maintaining
+such a list, I've decided to do it, so if anyone is interested in being
+added to this list, please let me know.  This will not be an automated list.
+Everything will be done manually, and all names will be put in a "Bcc:"
+header, so there will be no danger of being added to someone's spam list.
+
+
+IMPORTANT NOTE:
+
+As of version 7.2, the default rounding method has been changed.  The
+former default, round-to-even, aka banker's rounding, is still available,
+but is no longer the default, since I don't believe most people round
+this way, nor do they expect this type of rounding.  If you have older
+spreadheets that require it, start sc with the -e option on the command
+line.  Older spreadsheets that explicitly set rndinfinity will produce
+an error while loading because rndinfinity no longer exists, having been
+replaced by rndtoeven, which works exactly opposite to rndinfinity.  The
+error is harmless, and the results will still be what you expect, due to
+the changed default.  Resaving the file will eliminate the error on
+subsequent loads.
+
+
+More Changes:
+
+The CHANGES file lists the changes from 6.1 to 7.13.  One of the biggest
+changes in version 7.3 was the advanced macros.  You can now write macros
+in any language you choose.  These have subsequently been improved upon
+in later versions.  The documentation is still incomplete, but there is
+a file called SC.MACROS that should give you enough information to get
+started using this feature.  If you've used these before, be aware that
+the screen is no longer automatically redrawn when a macro is finished
+unless normal sc operations require it.  If your macro writes directly to
+the screen, bypassing sc, you will need to use the redraw command explicitly
+when the macro is done.  This is to avoid unecessary screen refreshes and
+the flicker that goes with them, since most macros won't need them.
+
+Also, sc can now be configured using a dotfile called .scrc either in your
+home directory or the directory in which you start sc (or both).  You can
+now change the default filename extensions for the various types of files
+sc can create.  See the man page for details.
+
+
+Colors:
+
+As of version 7.8, sc now supports a very powerful implementation of
+color.  Colors can be based on calculations, so that if you're doing a
+what-if scenario, and are changing values in various cells until a desired
+condition is met, you can use color to alert you as soon as it occurs (the
+colors that change don't have to be in the cells that are used in the
+calculation).
+
+I'm no longer running ncurses 1.9.9g on any of my machines or machines
+I work with, since it seems to have bugs in the handling of color that
+I've been unable to find a work-around for, and upgrading to the latest
+version seems to eliminate them.  If anyone else finds a way to work
+around these bugs, patches are welcome.
+
+If you have a problem getting highlighting to work when color is enabled,
+you may want to check the value of ncv in your terminfo file (this can
+be checked with the "tput ncv" command at the shell prompt).  This value
+should be an even number in order for standout mode to work.  If ncv is
+odd, try subtracting one and recompiling.  See the man pages for tic and
+infocmp for how to do this.  The linux terminfo file in some older versions
+of ncurses is known to have this problem, for example.
+
+
+Compiling the program:
+
+Before you compile, make sure to check the Makefile and uncomment the
+lines that pertain to your system and comment out the lines for Linux.
+If you run Linux, this step won't be necessary, since that's the default
+(since that's what I run).  I haven't tried compiling or running sc on
+anything else, but I've used it on both Slackware 4.0 (with ncurses upgraded
+to version 5.2) and Slackware 7.1, so I hope I haven't broken anything for
+anyone else.  If you get it to compile and run on something else, please
+let me know.  If it doesn't work and you can fix it, please send me a patch.
+
+
+A couple of notes from the previous maintainer:
+
+1) If you have problems with lex.c, and don't care about arrow keys, define
+   SIMPLE (-DSIMPLE in the makefile).  SIMPLE causes the arrow keys to not
+   be used.
+
+2) If you have problems with your yacc saying: too many terminals ...127...
+   find a different yacc: bison, Berkeley yacc, Pd yacc, etc.  AT&T's Sys V
+   yacc has small, fixed sized tables.  SCO will allow dynamic yacc tables
+   when given the correct flags.
+
+
+After you get it built, if you aren't familiar with sc, you might want
+to try "sc tutorial.sc" for a simple introduction to the basic commands.
+Most of the key bindings are patterned after the vi text editor, so if
+you're familiar with that program or its variants, you shouldn't have
+any problems learning sc.  The tutorial is a bit out-of-date, and doesn't
+include any of the new features I've added since I began maintaining sc.
+If anyone would like to rectify this situation, feel free.  The same goes
+for the built-in help system (available by pressing `?'), although the
+feature list has grown quite a bit, and that may not be easy to do without
+some major changes to the way the help system works.
+
+If you've used sc before, you may want to check out the CHANGES file
+to see what's changed, and read the man page for more details.
+
+To print a quick reference card, type the command:
+	scqref | [your_printer_commmand]
+
+If you have the command 'file' that uses /etc/magic, and it isn't there
+already, you may want to add the following lines:
+
+# sc:  file(1) magic for "sc" spreadsheet
+#
+38	string		Spreadsheet	sc spreadsheet file
+
+Psc formats ascii files for use in the spreadsheet.  If you don't have
+getopts, there is a public domain version by Henry Spencer hidden away in
+the VMS_NOTES file.
+
+If you'd like to rename the program to something different, just change
+"name=sc" and "NAME=SC" to "name=myfavoritename" and "NAME=MYFAVORITENAME"
+and try "make myfavoritename".  (Does anyone need or use this?  If so,
+please let me know.  Otherwise, I may remove that capability in a future
+version, since it seems to me that it reduces confusion if everyone
+refers to the program by the same name.  I've been told that there is a
+program called Sunshine Commander that used the same name). xxx
+
+Similarly, you can make the documentation with "make myfavoritename.man".
+"make install" will make and install the code in EXDIR.  The installation
+steps and documentation all key off of the name.  The makefile even changes
+the name in the nroffable man page.  If you don't have nroff, you will
+have to change sc.man yourself.
+
+Uninstalling the program is now very easy, if you should want to do this.
+Just do "make uninstall".
+
+
+Finding the latest version:
+
+Since ftp.freesoftware.com doesn't seem to be accepting uploads, and
+hasn't been for some time now, I've decided to switch to ibiblio.org
+(formerly metalab.unc.edu, formerly sunsite.unc.edu) as the primary site
+for sc.  The directory where you should be able to find the latest version
+is /pub/Linux/apps/financial/spreadsheet.  If you can't find it, e-mail
+me.  I know this is a Linux specific source, but it's the only place I know
+of.  If anyone knows of a more O/S-neutral location, please let me know.
+
+
+Disclaimer:
+
+sc is supplied as is with no warranty, express or implied.  It's free--
+what do you expect?
+
+
+Chuck Martin
+(cmartin@bigfoot.com)

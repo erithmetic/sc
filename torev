@@ -1,0 +1,4 @@
+REVISION=`sed -e '/Revision/!D' -e 's/.*$Revision: \(.*\) $.*/\1/' version.c` 
+sed -e s/pname/$name/g -e s/PNAME/$NAME/g \
+	-e "s%#LIBDIR#%$LIBDIR%g" \
+	-e "s/#REVISION#/$REVISION/" $1
