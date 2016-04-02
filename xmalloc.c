@@ -6,8 +6,8 @@
 #include <curses.h>
 #include "sc.h"
 
-extern char	*malloc();
-extern char	*realloc();
+/*extern char	*malloc();*/
+/*extern char	*realloc();*/
 extern void	free();
 void		fatal();
 
