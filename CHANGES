@@ -1,3 +1,482 @@
+CHANGES BETWEEN 7.15 and 7.16:
+Chuck Martin
+	-The marks for the last nine edited cells are now updated properly
+	 even if the data entered or edited is a string constant.
+	-When assigning a numeric value to a cell with = (or "let"), the
+	 numeric part of the cell will be cleared if no expression or value
+	 is specified (e.g. "let A0 =").
+	-Fixed a bug that caused references to cells in rows 0-3 to some-
+	 times be incorrect when copying.
+	-The vv command now increments modflg properly so sc knows that the
+	 file has been modified.
+	-Added vi-like abbreviations, defined with the abbrev command and
+	 undefined with the unabbrev command (shortcut key is ~).  See the
+	 man page for usage details.
+	-When in navigate mode, ^V now acts like the ESC key, which allows
+	 you to use ^V^V to disable expansion of abbreviations, as in vi.
+	 You can still use 'v' to insert the numeric value from the current
+	 cell into the command line.
+	-Added support for POSIX regex functions (regcomp() and regexec()),
+	 using extended regular expression syntax, and made it the default
+	 in the Makefile.  Also combined all regex variables into a single
+	 variable in the Makefile.
+	-Rewrote the code that copies a marked cell.  This fixes several
+	 problems: the is_cleared and may_sync flags are now correctly set
+	 (thanks to Michael Karcher for bringing that bug to my attention),
+	 sc will no longer copy into a locked cell, and copying a blank cell
+	 into a nonblank cell now clears the nonblank cell (it previously
+	 had no effect).
+	-When in quick numeric entry mode and a command is started using
+	 a digit or the +, -, or . keys, any cursor movement while the
+	 cursor is at the end of the line and the line ends with a + or -
+	 will automatically switch to navigate mode.
+	-The "+" key now works like "=" if the numeric part of the current
+	 cell is empty, except that the entry will begin in navigate mode.
+	 If quick numeric entry mode is enabled, after switching to insert
+	 mode the first time, the cursor keys will behave as if the entry
+	 was started with a digit or decimal.
+	-When defining a range in navigate mode and the character immedi-
+	 ately preceding the cursor is either a + or -, or the cursor is
+	 at the beginning of an empty "let" expression, pressing + or -
+	 will insert "@sum(" into the line, followed by the range, followed
+	 by ")" and then the character pressed (either + or -), and will
+	 remain in navigate mode.  Pressing TAB, :, or . in such a case
+	 will do the same thing, but without the final + or -, and without
+	 remaining in navigate mode.
+	-Pressing the space bar in navigate mode while highlighting a range
+	 will enter the highlighted range in the command line, followed by
+	 a space, but will remain in navigate mode.  Otherwise, it will
+	 move forward a column, as before.  This is handy for entering
+	 copy, move, or frame commands, for example, which accept more
+	 than one range in the command.
+	-The openrow command now works like the 'o' command instead of the
+	 'i' command, as it should.
+	-When adding or deleting a note, modflg and FullUpdate are now
+	 always incremented so that the the screen is updated properly and
+	 the change is saved if necessary.
+	-When deleting rows in a framed range, the frame is now adjusted
+	 properly all the time, regardless of how many rows are deleted.
+	 Also, if all of the inner range rows are deleted, the frame is
+	 removed.
+	-Removed clear() from the goraw() function to avoid screen flicker
+	 at the end of a macro, and added a clear() after each goraw()
+	 function call that still needed it.
+	-Removed #includes for getopt.h and added one for unistd.h in
+	 psc.c because getopt.h is only necessary for GNU long options,
+	 which sc and psc don't use.
+	-Removed the "#" prefix from backup file names, leaving only the
+	 trailing "~", which is more standard practice.  This was in
+	 response to a suggestion forwarded to me from the Debian Bug
+	 Tracking System (although it technically wasn't a bug).
+	-The umask is set to 0 before creating backups, and then reset to
+	 its original value afterwards, so that the backup file will have
+	 the same identical permissions as the original file.
+	-Backup files now retain the modification time of the original
+	 file before it was modified, and also the user and group ids, if
+	 possible.
+	-The -P command line option can now accept "%" as its range, which
+	 is interpreted to mean the whole spreadsheet.
+	-There is now a -W command line option that works similar to the -P
+	 option, except it uses the write command instead of the put command,
+	 and it takes a single range as an argument, which may be "%" to
+	 designate the whole spreadsheet.
+	-User-defined formats may now be edited instead of having to re-enter
+	 them from scratch.
+	-Rewrote much of the history search code so that it works much better
+	 than before and allows both forward and reverse searching.  Also
+	 added regular expression handling to the history search functions.
+	-When searching or navigating the command line history, a message
+	 is shown on the error line (2nd line) telling which line of the
+	 history you're currently looking at.
+	-If a cell uses a format that hasn't been defined yet, and isn't one
+	 of the predefined formats, it will now cause the cell to be blank
+	 instead of containing random characters.  Thanks to Hartmut Henkel
+	 for reporting this bug.
+	-All user-defined formats are now cleared in erasedb(), such as when
+	 loading a new file.
+	-When copying, if the destination range has fewer rows or columns
+	 than the source range, the area to be cleared before copying will
+	 be expanded to the same number of rows or columns as the source
+	 range to prevent there being unexpected data in the "holes".
+	-In the copy() function, added a call to sync_refs() after erasing
+	 the destination range, but before doing the actual copy, to prevent
+	 messing up color ranges, frames, ranges in expressions, or named
+	 ranges.
+	-Range commands are now initiated with "r" instead of "/".  The "/"
+	 key will be mapped to more advanced search (and possibly replace)
+	 capabilities later.
+	-Strings with embedded, backslash-escaped quotes are now displayed
+	 properly, with the backslashes removed.
+	-Shell escapes (using "!") now also work while in edit mode.
+	-Added @filename(e) function which returns the current default
+	 filename.  Expression e determines whether the full path should
+	 be returned, or just the base name, depending on whether it is zero
+	 or not.
+	-If craction is set to move the cursor either down or to the right,
+	 autoinsert is not set, and the cell cursor is in the scrolling region
+	 of a framed range, the cell cursor will never leave that region, but
+	 will always go to the next row/column after entering data in the last
+	 column/row of the range.  After reaching the bottom right corner,
+	 craction will be ignored.
+	-If quick numeric mode and craction are both set, pressing <RETURN>
+	 will move in the direction craction is set for instead of switching
+	 to input mode with an empty line.
+	-Changed test in get_motion() from checking for 0 to checking for
+	 '0' (digit instead of NULL byte), so that commands like d0, c0, and
+	 y0 (in edit mode) work correctly.
+	-If the dollar prescale option is set, all numbers entered with a
+	 decimal point will be scaled, even if all of the digits after the
+	 decimal point are zeros (or missing).
+	-Fixed a bug that prevented sc from remembering the filename when
+	 starting with a non-existent filename on the command line (for
+	 creating a new file).  Also, added a message stating that a new
+	 file is being created if sc is started with a single filename on
+	 the command line and the file doesn't exist.
+	-All of the commands that take you to the limits of the spreadsheet
+	 (0, $, ^, #, and the HOME key) now work differently when invoked
+	 inside a framed range.  Depending on where you are, they will take
+	 you first to the limit of the inner range, then the outer range,
+	 then the whole spreadsheet.  Also moved the code for all of these
+	 commands to their own functions in vi.c, since these portions of
+	 code were all being duplicated in the navigate mode section of the
+	 write_line() function.
+	-The last goto can now be repeated (find the next match) by pressing
+	 'n'.  All note commands must now be accessed by pressing '*' instead
+	 of 'n' to allow this.  To actually go to a note, press '*' twice.
+	-Added a new pull command, pullfmt (pf), that works like merge except
+	 that only cell formatting is merged, leaving the actual data un-
+	 touched.
+	-Changed starting value of findfunc in vi.c from '0' to '\0' to fix
+	 a bug that caused lockups when using the ; and , commands before a
+	 prior search with f, F, t, or T.
+	-Swapped the meaning of the ` and ' commands because the ' key is
+	 less of a reach on most keyboards (and more standard), and restoring
+	 the target cell to its original position on the screen seems to be
+	 more useful and more often used than not restoring the position.
+	-In closecol(), doformat(), and formatcol() functions, rowsinrange
+	 and colsinrange are now reset to prevent occasional lockups when
+	 deleting or resizing columns.
+	-Moved color initialization earlier in the start-up so that it won't
+	 override colors in a file (including the .scrc file).
+	-Trying to define color number 0 now correctly results in an error.
+	-Fixed support for entering numbers in exponential notation (thanks
+	 to Michael Van Biesbrouck for bringing that bug to my attention).
+	 Also, disallowed range names that are all numeric except for a
+	 single 'e' or 'E' anywhere in the name, because they are ambiguous.
+	-Removed the strtof() function, since it partially duplicated the
+	 functionality of the standard ANSI C strtod() function (but not as
+	 well), and replaced all strtof() calls with calls to strtod() (with
+	 a slightly different syntax).
+	-Moved the resetting of skipautorun inside the if(eraseflag) block
+	 in the readfile() function to prevent it getting reset prematurely
+	 (during the reading of the .scrc files) and resulting in the autorun
+	 macro being run anyway.
+	-If deleting a range of rows, columns, or cells causes the range
+	 pointed to by lastfr to no longer exist, lastfr is reset to NULL to
+	 prevent a segmentation fault during the next screen update.
+	-The copy command now uses the delete buffer as temporary storage
+	 for the source range being copied so that if the source and desti-
+	 nation ranges overlap, the copy still works.
+	-The sync_refs() function now also syncs references in all delete
+	 buffers so they will still be correct when pulled (even though the
+	 references are adjusted when pulling, they were still occasionally
+	 wrong if the cells originally referenced were moved in the meantime).
+	-A new copy command, "c.", can be used to copy the current cell into
+	 a range which includes the current cell, and which is highlighted
+	 by moving the cell cursor.  This facilitates the rapid entry of the
+	 same value, string, or expression into a range of cells.  See the
+	 man page for details.
+	-You can now left justify, right justify, or center all the strings
+	 in a range with the "r{", "r}", and "r|" commands, respectively.
+	 These operations are also available in macros with "leftjustify",
+	 "rightjustify", and "center".
+	-When changing column formats, if ESC, ^G, or q is pressed, the
+	 original format will be restored.
+	-The fixed operator was not working.  It now works, but, like all
+	 other keywords, must be preceded by "@".
+	-Autoinsert mode now works properly even if the bottom of the frame
+	 is of width 0.
+	-A new Set option, autowrap, allows data to be entered in a framed
+	 range row by row or column by column if craction is not 0, auto-
+	 matically wrapping to the next row or column when the end of the
+	 scrolling region is reached.  If both autowrap and autoinsert are
+	 enabled, autoinsertion only takes place if autowrap would take the
+	 cell cursor outside of the scrolling region of the framed range.
+	-The "set" command now increments modflg so that sc knows the file
+	 has been changed and asks whether to save when quitting.
+	-Added vi-like W and B commands to edit mode which only consider a
+	 string of one or more spaces to be a word boundary.
+	-The @date function can now take an optional second parameter, which
+	 is a strftime(3) compatible format string, which will override the
+	 default format.
+	-All functions which take a single argument now store it as the
+	 left parameter instead of the right (e.o.left instead of e.o.right),
+	 so that adding an optional second parameter, such as in the @date
+	 function in the previous item, keeps the parameters in the correct
+	 order when decompiling for display on the top line or saving in
+	 a file.
+	-When numeric constants are entered which are too large to be con-
+	 tained in a double, they are replaced with @err.  When the result
+	 of a calculation is too large to be contained in a double, it results
+	 in an error.  These fix a dual bug which caused "inf" or "INF" to be
+	 displayed (bug 1) and written to a file (bug 2) when saving.  When
+	 written to a file, it resulted in an error when the file was read
+	 back in the next time.
+	-All rows, columns, and ranges that are yanked or deleted now have
+	 their respective row/column hidden flags and column width, precision,
+	 and format saved so they can be restored appropriately when pulling
+	 rows or columns (these were all lost, previously, and the default
+	 values were restored, instead).
+	-Added a pullcopy command and its interactive shortcut, pC, which
+	 acts like pp, except that references are adjusted as in the other
+	 copy operations.  Also added a "p." command, which works like pC,
+	 except that it allows a destination range to be defined as in the
+	 "c." command.
+	-When highlighting a range in navigate mode, pressing "o" will move
+	 you to the opposite corner of the highlighted range, allowing you
+	 to adjust all four sides of the range.  When used with the "c."
+	 command, the cell to be copied will always be the cell the command
+	 was started in.
+	-The deleterow, deletecol, yankrow, and yankcol commands now work
+	 properly with no arguments instead of assuming there is a range
+	 highlighted.
+	-The Z command (for hiding rows or columns) now allows a range of
+	 rows or columns to be highlighted using any cursor movement keys,
+	 like the d (delete) and y (yank) commands have for quite awhile.
+	-The erase_area() function now has a new argument to ignore locked
+	 cells which is used when sorting so that locked cells can still
+	 be sorted.  Also added an unlock argument to free_ent() and caused
+	 the is_locked flag to be copied in the copyent() function so that
+	 sorting won't unlock cells.
+	-The @sum, @prod, @avg, @count, @stddev, @max, and @min functions
+	 may now take an optional second argument which is an expression
+	 that is evaluated for each cell in the range, and only those cells
+	 for which the expression is non-zero are included in the calculation
+	 of the function.  See the man page for details.
+	-If rows are inserted into a framed range, note addresses are now
+	 updated properly.
+	-Logical NOT (~ or !) now always decompiles to "!" instead of "~"
+	 for display or writing to a file.
+	-In the O_VAR case in the seval() function, check to make sure that
+	 ep is not NULL before checking if it has a label to prevent possible
+	 segfaults with the seval command, and also changed its name to vp
+	 for consistency with the O_VAR case handling in eval().
+	-In doseval(), check the return value of seval() for NULL before
+	 using it to prevent segfaults with the seval command if the ex-
+	 pression given to seval isn't a valid string expression.
+	-Fixed a bug that prevented a string expression that currently
+	 evaluated to a null string from being written to a file with the
+	 put command by testing for either a non-null string value or a
+	 string expression in the cell instead of just the former.
+	-Moved "FullUpdate++" outside of "if (eraseflg)" block at the end
+	 of the readfile() function in cmds.c so that the screen is updated
+	 properly after a macro.
+	-Added a getkey command for use in macros to get a single key from
+	 the user instead of a string.  Handy for "hotkeys" or "Press any
+	 key..." type things.
+	-Changed two instances of update(0) to refresh() in formatcol(), and
+	 added another refresh() after update(1) later in the same function
+	 because the screen wasn't being refreshed properly in FreeBSD.
+	-Added a ^L option to redraw the screen while formatting a column.
+	-Added -ffloat-store to the compiler command line for interp.c to
+	 fix intermittent error with @round function as well as some other
+	 problems caused by the FPU registers in x86 machines, and possibly
+	 others, having different precision than doubles in memory, and
+	 removed some previous workarounds for some of these problems.
+	-Braille mode now positions the cursor at the far left of the current
+	 cell and also moves the column names to the left edge of the column,
+	 which works better with screen readers such as SpeakUp while still
+	 retaining all of its advantages for braille readers.
+Michael Lapsley
+	-Added @lastrow and @lastcol functions, useful for macros designed
+	 to default to the whole spreadsheet.
+	-Added getrange command for use by macros to check if a given named
+	 range exists without causing an error, and return the actual range
+	 if so.
+	-Added a history file (default: ~/.sc_history) to carry the command
+	 history from one session to another.
+	-Added ability to interface with plugins (external programs for
+	 adding commands to sc and converting files with user-specified
+	 extensions automatically when reading or writing).
+Wilhelm B. Kloke
+	-Pointed out problems with arrow keys in nmgetch() when BSD43 is
+	 defined due to changed ^B and ^F behavior, causing arrow keys to
+	 work incorrectly on FreeBSD.  Also, similar changes were necessary
+	 for VMS when SIMPLE is defined.
+	-Add "optreset = 1" to -P option handling when BSD43 is defined so
+	 the -P command line option will work properly on FreeBSD.
+Hartmut Henkel
+	-Added locale support.
+	-Rewrote dodate() function to use strftime() because ctime() doesn't
+	 honor locale.
+	-Changed PI macro to M_PI, which is standard in math.h.
+	-Changed sprintf() to snprintf() in dofmt() function to prevent
+	 potential segmentation faults.
+	-Added isascii() check in addition to existing isalpha() check to
+	 prevent invalid address problems in some locales.
+TJ Dvorachek
+	-Time types in interp.c have been changed from long to time_t and
+	 the time() prototype in dotime() is redundant and has been removed.
+	-Provided information for creation of a DJGPP section in the Makefile.
+	-In the signals() function in sc.c, the SIGBUS signal handler is not
+	 set when compiling with DJGPP because it lacks SIGBUS.
+
+CHANGES BETWEEN 7.14 and 7.15:
+Chuck Martin
+	-Fixed "``" and "''" bug, introduced in 7.14 (they weren't being
+	 accepted).  I guess 7.14 was released too soon after last minute
+	 changes, without sufficient testing.
+	-Fixed format bug that caused segfaults when there was no decimal
+	 point in the format string, also introduced in 7.14 last minute
+	 changes.
+	-When entering insert mode with '+' or '-', and the cell already
+	 contains a numeric value or expression, the edit is now saved in
+	 the dot buffer, as it should be.
+	-Don't save the current position (for the "`" and "'" commands)
+	 during a goto in a macro.  Also, don't save the current position
+	 during any movement command where the current cell doesn't change
+	 (leave the saved position pointing to the last position before an
+	 actual move).
+
+CHANGES BETWEEN 7.13 and 7.14:
+Chuck Martin
+	-Added a braille option ("set braille" or ^Tb) with two different
+	 modes, which makes use of braille displays with sc much easier
+	 by judicious placement of the hardware cursor.
+	-The "cellcur" option (current cell highlighting) is no longer
+	 saved with a file, since it's more likely a user preference
+	 and/or terminal dependent, and is more appropriate for use in a
+	 user's .scrc.
+	-Split the last fprintf() in list_frames() so that the outside
+	 and inside ranges will be different (as they should be), even if
+	 neither is a named range, since r_name() uses a single static
+	 buffer.
+	-The range copy command (/c) with only one argument will now use the
+	 highlighted range as the source if one is highlighted.  Otherwise,
+	 it will copy the last copied range, as before.
+	-The range copy command (/c) with no arguments will now use the
+	 highlighted range as the destination, if one is highlighted, and
+	 the last copied range as the source.
+	-The addnote command with only one argument will now use the
+	 highlighted range if there is one, and the current cell otherwise,
+	 as the range to link to the cell specified by the single argument.
+	-The frame command with a single argument will use the highlighted
+	 range, if any, as the inside range, and the single argument as
+	 the outside range.  If no range is highlighted, the single argument
+	 will be used as the inner range, and the existing outer range
+	 containing the current cell will be used as the outer range, which
+	 which was the previous behavior whenever a single range was speci-
+	 fied.  If the current cell is not in an existing framed range, an
+	 error message will be issued.
+	-The frame command may now be used without any arguments, provided
+	 a range is highlighted (which will be used as the inner range)
+	 and the current cell is in a framed range whose outer range is to
+	 be used as the default outer range.
+	-Fixed a bug that prevented defining a new range with a name that
+	 was the same as the beginning of a previously defined longer
+	 range name.
+	-A new command line option, -a, will skip the autorun macro if
+	 one is defined.
+	-Bug fix: if a cell contains a string expression, but no numeric
+	 value, pressing "e" to edit the non-existent numeric value will
+	 no longer bring up the string expression for editing (it wouldn't
+	 work, anyway, because string expressions don't work with the "let"
+	 command).
+	-You can now use the cursor keys with ^Tr to set craction.
+	-In numeric mode, entering insert mode by pressing a digit, '+',
+	 or '-' will cause the cursor keys to terminate an entry and
+	 move the cell cursor in the desired direction.  Switching to
+	 edit mode will change the cursor keys back to their normal
+	 function (moving the cursor in the command line or history), even
+	 after switching back to insert mode.
+	-Fixed @index function so that indexing by both row and column
+	 will still work even if there is only one row or one column
+	 (so that, for example, a macro could generically access the
+	 cell in the first row and first column of a range without
+	 regard for the actual dimensions of the range).
+	-All flags are turned off in the clearent() function except
+	 is_changed and is_cleared, which are turned on.  Also, the
+	 is_cleared flag is turned off in the fill() function after the
+	 cell is cleared and then assigned a new value.  This prevents
+	 errors from appearing in expressions which reference cells in
+	 the filled range whenever the sync_refs() function is called,
+	 which happens any time any cell or range of cells is yanked,
+	 deleted, pulled, copied, or moved.
+	-Each instance of @ext now saves its own previous value, which
+	 eliminates the longstanding bug that caused the last returned
+	 value to be used for all instances if external functions were
+	 enabled and later disabled.
+	-Added a % command in edit mode that finds the matching parenthesis
+	 of a pair, as in vi (only works for parentheses, not for braces
+	 or brackets).
+	-When starting a new command, the dot buffer will not be altered
+	 unless the command starts out in edit mode (like the "e" and
+	 "E" commands).  All other commands will only alter the dot buffer
+	 after entering edit mode for the first time.  This allows things
+	 like editing data, using "goto" to jump to a new cell, and then
+	 "." to make the same change to the new cell (previously, the
+	 "goto" command caused the previous edit to be lost from the dot
+	 buffer).
+	-Numeric arguments are now saved for use with the dot buffer when
+	 editing a line, so the same argument will be used again when
+	 repeating the action with the "." command.
+	-If a command line is identical to the last command in the history,
+	 it won't be stored in the history again.
+	-The copy and move commands (/c and /m) no longer have an effect
+	 on the delete buffer.  This allows you to do things like delete
+	 a cell or range of cells, move things around in the spreadsheet,
+	 and then pull the deleted cell(s) back in.
+	-Implemented named buffers, "a" through "z" and "0" through "9",
+	 selected with the " key.  Buffers "1" through "9" hold the last
+	 nine deletions, as in vi, and buffer "0" holds the last cell or
+	 range of cells yanked, as in vim.  See the man page for details.
+	 (A "select" command was also added to allow the use of named
+	 buffers in macros.)
+	-The format command now rejects a width of zero.
+	-Column headings over columns of width 1, 2, or 3 are now displayed
+	 properly.  If the width is 1 and the column name is two characters,
+	 only the second character will be displayed in the heading.
+	-In navigate mode, v and ^V now place the numeric value from the
+	 current cell into the command line, freeing up the ^A command
+	 to be used as a synonym for the HOME key, as it is when not editing
+	 a line.
+	-KEY_RESIZE is now handled properly so an error message is not
+	 issued whenever an xterm window is resized.  If SIGWINCH is
+	 undefined, KEY_RESIZE resizes the spreadsheet to fit the window.
+	 otherwise, it is ignored, since the SIGWINCH signal handles the
+	 resizing.
+	-Pulling the same range several times now works correctly.  Pre-
+	 viously, some cell references were being altered after the first
+	 pull under certain circumstances.
+	-Internal references are now adjusted properly when pulling a range
+	 with "pt" (pulltp).
+	-The -R and -C command line options now work properly again.
+	-The pull merge command (pm) now actually does a merge, instead of
+	 overwriting the destination cells, and a new pull command (paste,
+	 or "pp") pulls a cell or range after first erasing the destination
+	 cells.  For macros, pull does the paste, while pullmerge does the
+	 merge.
+	-The f (format) command now allows you to interactively change the
+	 column width, precision, and format number as well as enter these
+	 values on the command line as before.  See the man page for details.
+	-The "&" in the fractional part of a custom format type now works
+	 properly even if the precision is one.
+	-When using "&" in a custom format type, and there are literal
+	 characters after the fractional portion, they will now be included
+	 properly even when the precision is zero.
+	-Removed the "fill x y" (where x and y are numbers and the range
+	 is supposed to be highlighted) form of the fill command, since
+	 its usefulness and convenience leaves much to be desired the was
+	 sc now handles the /f command.  It's much easier to use the full
+	 form now.
+	-Added marks '1' through '9' to remember the locations of the last
+	 nine edits, and '0' for the current (or last, if not editing) edit.
+Hartmut Henkel
+	-When saving a range with "Put", the "format" and "hide" commands
+	 are now written for the last column of the range, if necessary
+	 (needed to change a "c < cn" to "c <= cn" in the write_fd()
+	 function in each case).
+
 CHANGES BETWEEN 7.12 and 7.13:
 Chuck Martin
 	-New column formats may now be defined with "format # = string",

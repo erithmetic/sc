@@ -2,13 +2,13 @@
  * Help functions for sc 
  * R. Bond, 1988
  * J. Buhrt 1990
- * $Revision: 7.13 $
+ * $Revision: 7.16 $
  */
 
 #ifdef QREF
 #include <stdio.h>
 char	*header = " Quick Reference";
-char	*revision = "$Revision: 7.13 $";
+char	*revision = "$Revision: 7.16 $";
 #else
 #include <curses.h>
 #include "sc.h"
@@ -95,7 +95,7 @@ char *setoptions[] = {
 "          iterations=n  Set the number of iterations allowed. (10)",
 "          tblstyle=xx   Set ``T'' output style to:",
 "                        0 (none), tex, latex, slatex, or tbl.",
-"          rndtoeven     Round *.5 to nearest even number instead of"
+"          rndtoeven     Round *.5 to nearest even number instead of",
 "                        always up.",
 "          rowlimit=n    Set the remembered row limit for newline action.",
 "          collimit=n    Set the remembered column limit for newline action.",
@@ -113,14 +113,13 @@ char *cursor[] = {
 #if defined(QREF) && defined(TROFF)
 ".Lp",
 #endif
-"     ^N ^P ^B ^F Down, up, back, forward",
-"     ^Ed         Go to end of range.  Follow ^E by a direction indicator",
-"                 such as ^P or j.",
+"     ^N ^P      Down, up",
+"     j k l h    Down, up, right, left",
 "     Arrow keys (if the terminal and termcap support them.)",
+"     ^Ed        Go to end of range.  Follow ^E by a direction indicator",
+"                such as ^P or j.",
 " ",
-" Cell cursor movement if no prompt active:",
-"     j,k,l,h    Down, up, right, left",
-"     J,K,L,H    Down, up, right, left by 1/2 pages",
+"     J K L H    Down, up, right, left by 1/2 pages (or 'pagesize' rows)",
 "     SPACE      Forward",
 "     ^H         Back",
 "     TAB        Forward, otherwise starts/ends a range",
@@ -132,7 +131,7 @@ char *cursor[] = {
 "     w          Forward then down to the next valid cell.",
 "     g          Go to a cell.  Cell name, range name, quoted string,",
 "                a number, 'error', or 'invalid' to specify which cell.",
-"     `,'        Go to a marked cell (see help screen e for more info.",
+"     ` '        Go to a marked cell (see help screen e for more info.",
 (char *)0
 };
 
@@ -149,7 +148,11 @@ char *cell[] = {
 #endif
 "     =    Enter a numeric constant or expression.",
 "     <    Enter a left justified string or string expression.",
-"     \"    Enter a centered label.",
+#if defined(QREF) && defined(TROFF)
+"     \\\\    Enter a centered label.",
+#else
+"     \\    Enter a centered label.",
+#endif
 "     >    Enter a right justified string or string expression.",
 "     e    Edit the current cell's numeric value.",
 "     E    Edit the current cell's string part.",
@@ -195,8 +198,8 @@ char *vi[] = {
 "     cm dm        Change/Delete - m = b,e,f,h,l,t or w.",
 "     R            Enter replace (overstrike) mode.",
 "     s            Delete character under cursor and enter insert mode.",
-"     + j - k /    Forward/backward/search the command history.",
-"     n            Repeat last history search.",
+"     + j - k / ?  Forward/backward/search the command history.",
+"     n N          Repeat last history search (N = opposite direction).",
 "     . u          Repeat/undo the last command.",
 "     ^V           Enter navigate mode.  Another ^V enters current cell address.",
 "     ^W           Type, in the command line, the current cell's expression.",
@@ -265,7 +268,8 @@ char *row[] = {
 "     references in the new cell expressions.  Use ``fixed'' or the",
 "     ``$'' style cell reference to supress the change.",
 " ",
-"     @myrow, @mycol    return the row or column of the current cell",
+"     @myrow, @mycol        return the row or column of the current cell",
+"     @lastrow, @lastcol    return the row or column of the current cell",
 (char *)0
 };
 
@@ -279,27 +283,27 @@ char *range[] = {
 #if defined(QREF) && defined(TROFF)
 ".Lp",
 #endif
-"     /x   Clear a range. ",
-"     /v   Remove the expressions from a range of cells, leaving ",
+"     rx   Clear a range. ",
+"     rv   Remove the expressions from a range of cells, leaving ",
 "          just the values.",
-"     /c   Copy a source range to a destination range.",
-"     /f   Fill a range with constant values starting with a given",
+"     rc   Copy a source range to a destination range.",
+"     rf   Fill a range with constant values starting with a given",
 "          value and increasing by a given increment.",
-"     /d   Assign a name to a cell or a range of cells.  Give the",
+"     rd   Assign a name to a cell or a range of cells.  Give the",
 "          the name, surrounded by quotes, and either a cell name such",
 "          as ``A10'' or a range such as ``a1:b20''.",
-"     /l   Locks a cell or a range of cells, i.e makes it unchangeable.",
-"     /U   Unlocks a locked cell, i.e makes it changeable.",
-"     /s   Shows the currently defined range names.  Pipe output to",
+"     rl   Locks a cell or a range of cells, i.e makes it unchangeable.",
+"     rU   Unlocks a locked cell, i.e makes it changeable.",
+"     rs   Shows the currently defined range names.  Pipe output to",
 "          sort, then to less.",
-"     /u   Use this command to undefine a previously defined range name.",
-"     /F   Assign a format string to a range of cells.",
+"     ru   Use this command to undefine a previously defined range name.",
+"     rF   Assign a format string to a range of cells.",
 " ",
 "     Range operations affect a rectangular region on the screen",
 "     defined by the upper left and lower right cells in the region.",
 "     A range is specified by giving the cell names separated by ``:'',",
 "     such as ``a20:k52''.  Another way to refer to a range is to use",
-"     a name previously defined using ``/d''.",
+"     a name previously defined using ``rd''.",
 (char *)0
 };
 
@@ -323,7 +327,7 @@ char *misc[] = {
 "     ^R       Redraw the screen.  Highlight cells with values but no",
 "              expressions.",
 "     ^X       Redraw the screen.  Show formulas, not values.",
-"     C        Redraw the screen with the row containing the current cell"
+"     C        Redraw the screen with the row containing the current cell",
 "              centered.",
 "     @        Recalculate the spreadsheet.",
 "     TAB      When the character cursor is on the top line TAB can be used",
@@ -346,7 +350,7 @@ char *var[] = {
 "     $K20   Row can vary; column stays fixed on copies.",
 "     K$20   Row stays fixed; column can vary on copies.",
 "     fixed  holds following expession fixed on copies.",
-"     Cells and ranges can be given a symbolic name via ``/d''.",
+"     Cells and ranges can be given a symbolic name via ``rd''.",
 " ",
 " Expressions:",
 "     -e      Negation                e<=e  Less than or equal",
@@ -579,7 +583,7 @@ pscreen(char *screen[])
 	(void) clrtoeol();
     }
     (void) move(0,0);
-    (void) printw("Which Screen? [a-o, q]");
+    (void) printw("Which Screen? [a-p, q]");
     (void) clrtoeol();
     (void) refresh();
     return(nmgetch());
@@ -621,7 +625,7 @@ puts(".LP");
     {
 #ifndef TROFF
 	(void) fputs(SCNAME, stdout);
-	(void) fputs(header);
+	(void) fputs(header, stdout);
 	(void) printf("\n");
 	(void) puts(revision);
 #endif

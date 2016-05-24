@@ -17,12 +17,12 @@
  *  Author: Robert Bond
  *  Adjustments: Jeff Buhrt, Eric Putz and Chuck Martin
  */
-char *rev = "$Revision: 7.13 $";
+char *rev = "$Revision: 7.16 $";
 
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <getopt.h>
+#include <unistd.h>
 #include "sc.h"
 
 #define END	0

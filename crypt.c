@@ -2,7 +2,7 @@
  * Encryption utilites
  * Bradley Williams	
  * {allegra,ihnp4,uiucdcs,ctvax}!convex!williams
- * $Revision: 7.13 $
+ * $Revision: 7.16 $
  */
 
 #if !defined(VMS) && !defined(MSDOS) && defined(CRYPT_PATH)

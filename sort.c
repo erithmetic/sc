@@ -1,10 +1,10 @@
 /*	SC	A Spreadsheet Calculator
  *		Sorting routines
  *
- *		Chuck Martin <cmartin@bigfoot.com>
+ *		Chuck Martin <nrocinu@myrealbox.com>
  *		Originally created:  April, 2001
  *
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  */
 
 #include <sys/types.h>
@@ -98,7 +98,7 @@ sortrange(struct ent *left, struct ent *right, char *criteria)
 	}
 
     qsort(rows, maxr - minr + 1, sizeof(int), compare);
-    erase_area(minr, minc, maxr, maxc);
+    erase_area(minr, minc, maxr, maxc, 1);
     sync_ranges();
     for (c = 0, p = delbuf[dbidx]; p; p = p->next) {
 	if (rows[c] != p->row) {

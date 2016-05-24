@@ -1,5 +1,5 @@
-.\" $Revision: 7.13 $
-.TH PPNAME 1 "4 August 2001" "PPNAME #REVISION#"
+.\" $Revision: 7.16 $
+.TH PPNAME 1 "19 September 2002" "PPNAME #REVISION#"
 .SH NAME
 ppname \- prepare pname files
 .SH SYNOPSIS

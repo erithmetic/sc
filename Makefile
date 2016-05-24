@@ -1,7 +1,7 @@
-# Makefile $Revision: 7.13 $
+# Makefile $Revision: 7.16 $
 #
 # 1) Select the proper EXDIR (path), MANDIR, MANEXT, LIBDIR, SIGVOID,
-#	RE_COMP/REGCMP, DFLT_PAGER, and FMOD. Most of the other things aren't
+#	REGEX, DFLT_PAGER, and FMOD. Most of the other things aren't
 #	normally changed (see the comments with each)
 # 2) Select the proper machine/compiler/OS section of code
 #	for MS-DOS look for the pattern 'MS-DOS'
@@ -33,6 +33,7 @@ MANMODE=644
 # This is where the library file (tutorial) goes.
 #LIBDIR=/usr/local/share/$(name) # reno
 LIBDIR=${prefix}/lib/$(name)
+LIBRARY=-DLIBDIR=\"${LIBDIR}\"
 
 # Set SIMPLE for lex.c if you don't want arrow keys or lex.c blows up
 #SIMPLE=-DSIMPLE
@@ -43,6 +44,11 @@ SIMPLE=
 # be staggered across the screen. Also try IDLOKBAD below.
 #BROKENCURSES=-DBROKENCURSES
 BROKENCURSES=
+
+# Set USELOCALE to enable country-dependent display of decimal points,
+# local character recognition in words, and local @date() format.
+#USELOCALE=
+USELOCALE=-DUSELOCALE
 
 # Set DOBACKUPS if you would like a backup copy of a source file on a save
 #DOBACKUPS=
@@ -61,6 +67,14 @@ SIGVOID=-DSIGVOID
 #IEEE_MATH=-DIEEE_MATH
 IEEE_MATH=
 
+# The -ffloat-store compiler option is necessary for compiling interp.c to
+# prevent spurious "Still changing after x iterations" errors, intermittent
+# problems with the @round function, comparisons failing when they shouldn't,
+# and potentially other similar problems due to FPU registers having greater
+# precision than doubles in memory.  This is known to be necessary for GCC
+# on x86 processors/FPUs, and probably others.
+FLOAT_STORE=-ffloat-store
+
 # Set RINT=-DRINT if you do not have rint() in math.h
 # Set RINT=	on/with (they have rint):
 #	SunOS 4.0.3c compiler
@@ -68,20 +82,25 @@ IEEE_MATH=
 #RINT=-DRINT
 RINT=
 
-# Set RE_COMP if you have the re_comp/re_exec regular expression routines
-# (most BSD based systems do).
-#RE_COMP=
-RE_COMP=-DRE_COMP
-
-# Set REGCMP if you have the regcmp/regex regular expression routines
-# (most System V based systems do)
-#REGCMP=-DREGCMP
-REGCMP=
+# If your system supports POSIX.2 regular expressions, REGEX should be
+# set to -DREGCOMP.  Otherwise, set REGEX to -DREGCMP if you have the
+# regcmp/regex regular expression routines (most System V based systems
+# do) or to -DRE_COMP if you have the re_comp/re_exec regular expression
+# routines (most BSD based systems do).  If your system has no support for
+# regular expressions, leave REGEX unset.
+#REGEX=
+#REGEX=-DREGCMP
+#REGEX=-DRE_COMP
+REGEX=-DREGCOMP
 
 # This is the name of a pager like "more".
 # "pg" may be appropriate for SYSV.
 #DFLT_PAGER=-DDFLT_PAGER=\"more\"	# generic && reno
 DFLT_PAGER=-DDFLT_PAGER=\"less\"
+
+# This is the name of the history file.  If undefined, the history will
+# not be saved.
+HISTORY_FILE=-DHISTORY_FILE=\"~/.sc_history\"
 
 # this is the name to save back ups in
 SAVE=-DSAVENAME=\"$(NAME).SAVE\"
@@ -237,7 +256,7 @@ LN=ln
 # BSD curses (especially helps scrolling on slow (9600bps or less)
 # serial lines).
 #
-# Be sure to define SIGVOID and RE_COMP above.
+# Be sure to define SIGVOID and REGEX (to -DRE_COMP) above.
 # 
 #CC=/usr/5bin/cc
 #CFLAGS= -O -DSYSV3 
@@ -298,6 +317,19 @@ LN=ln
 #	$(CC) $(CFLAGS) -c $*.c
 
 #########################################
+# Use this for MS-DOS with DJGPP
+# REGEX should also be undefined (see above) unless a separate REGEX library
+# is installed (gdb includes one, but may result in file conflicts with
+# existing DJGPP files).
+#CC=gcc
+# Only use -Wall for testing, since it produces warnings that are of no
+# real effect on the reliability of the program, but may concern some
+# people who don't understand them.
+#CFLAGS=-DSYSV3 -O2 -Wall -UMSDOS
+#CFLAGS=-DSYSV3 -O2 -UMSDOS
+#LIB=-lm -lpdcurses
+
+#########################################
 # Use this for Linux
 CC=gcc
 # Only use -Wall for testing, since it produces warnings that are of no
@@ -308,13 +340,14 @@ CFLAGS=-DSYSV3 -O2 -pipe
 LIB=-lm -lncurses
 
 # All of the source files
-SRC=Makefile color.c cmds.c crypt.c eres.sed frame.c format.c gram.y help.c \
-	interp.c lex.c pipe.c psc.c range.c sc.c sc.h screen.c sort.c sres.sed \
-	version.c vi.c vmtbl.c xmalloc.c
+SRC=Makefile abbrev.c cmds.c color.c crypt.c eres.sed frame.c format.c gram.y \
+	help.c interp.c lex.c pipe.c psc.c range.c sc.c sc.h screen.c sort.c \
+	sres.sed version.c vi.c vmtbl.c xmalloc.c
 
 # The objects
-OBJS=cmds.o color.o crypt.o format.o frame.o gram.o help.o interp.o lex.o \
-	pipe.o range.o sc.o screen.o sort.o version.o vi.o vmtbl.o xmalloc.o
+OBJS=abbrev.o cmds.o color.o crypt.o format.o frame.o gram.o help.o interp.o \
+	lex.o pipe.o range.o sc.o screen.o sort.o version.o vi.o vmtbl.o \
+	xmalloc.o
 
 # The documents in the Archive
 DOCS=CHANGES README sc.doc psc.doc tutorial.sc VMS_NOTES torev build.com
@@ -366,43 +399,46 @@ pxmalloc.c: xmalloc.c
 
 # Objects
 
+abbrev.o: abbrev.c sc.h
+	$(CC) ${CFLAGS} ${DFLT_PAGER} -c abbrev.c
+
 cmds.o: cmds.c sc.h
 	$(CC) ${CFLAGS} ${DOBACKUPS} ${CRYPT} -c cmds.c
+
+color.o: color.c sc.h
 
 crypt.o: crypt.c sc.h
 	$(CC) ${CFLAGS} ${CRYPT} ${DOBACKUPS} -c crypt.c
 
 format.o: format.c
 
-help.o: help.c sc.h
-	$(CC) ${CFLAGS} ${CRYPT} -c help.c
-
-qhelp.o: qhelp.c sc.h
-	$(CC) ${CFLAGS} ${CRYPT} -c qhelp.c
-
-interp.o:	interp.c sc.h
-	$(CC) ${CFLAGS} ${IEEE_MATH} ${SIGVOID} ${RINT} ${RE_COMP} ${REGCMP} \
-	${FMOD} -c interp.c
+frame.o: frame.c sc.h
 
 gram.o:	sc.h $(YTAB).h gram.c
-	$(CC) ${CFLAGS} -c gram.c
+	$(CC) ${CFLAGS} ${USELOCALE} -c gram.c
 	sed < gram.y > experres.h -f eres.sed
 	sed < gram.y > statres.h -f sres.sed
 
+help.o: help.c sc.h
+	$(CC) ${CFLAGS} ${CRYPT} -c help.c
+
+interp.o:	interp.c sc.h
+	$(CC) ${CFLAGS} ${FLOAT_STORE} ${IEEE_MATH} ${SIGVOID} ${RINT} \
+	${REGEX} ${FMOD} -c interp.c
+
 lex.o:	sc.h $(YTAB).h gram.o lex.c
-	$(CC) ${CFLAGS} ${SIMPLE} ${IEEE_MATH} ${SIGVOID} ${NO_NOTIMEOUT} \
-	-c lex.c
+	$(CC) ${CFLAGS} ${SIMPLE} ${IEEE_MATH} ${LIBRARY} ${SIGVOID} \
+	${NO_NOTIMEOUT} -c lex.c
 
 pipe.o: pipe.c sc.h
 
 pxmalloc.o: sc.h pxmalloc.c
 	$(CC) ${CFLAGS} -c -DPSC pxmalloc.c
 
+qhelp.o: qhelp.c sc.h
+	$(CC) ${CFLAGS} ${CRYPT} -c qhelp.c
+
 range.o: range.c sc.h
-
-frame.o: frame.c sc.h
-
-color.o: color.c sc.h
 
 sc.o:	sc.h sc.c
 	$(CC) ${CFLAGS} ${DFLT_PAGER} ${SIGVOID} ${SAVE} -c sc.c
@@ -411,9 +447,10 @@ screen.o:	sc.h screen.c
 	$(CC) ${CFLAGS} ${BROKENCURSES} ${IDLOKISBAD} ${RIGHTBUG} ${SIGVOID} \
 	${NO_IDLOK} -c screen.c
 
-vi.o: vi.c sc.h
-
 sort.o: sort.c sc.h
+
+vi.o: vi.c sc.h
+	$(CC) ${CFLAGS} ${REGEX} ${HISTORY_FILE} -c vi.c
 
 # other stuff
 
@@ -474,6 +511,7 @@ $(EXDIR)/p$(name): p$(name)
 	strip $(EXDIR)/p$(name)
 
 $(LIBDIR)/tutorial: tutorial.sc $(LIBDIR)
+	-mkdir -p $(LIBDIR)/plugins
 	cp tutorial.sc $(LIBDIR)/tutorial.$(name)
 	chmod $(MANMODE) $(LIBDIR)/tutorial.$(name)
 

@@ -1,10 +1,10 @@
 /*	SC	A Spreadsheet Calculator
  *		Framed range manipulation
  *
- *		Chuck Martin <cmartin@bigfoot.com>
+ *		Chuck Martin <nrocinu@myrealbox.com>
  *		Originally created:  December, 2000
  *
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  */
 
 #include <sys/types.h>
@@ -91,6 +91,7 @@ add_frange(struct ent *or_left, struct ent *or_right, struct ent *ir_left,
 		    else
 			frame_base = r->r_next;
 		    scxfree((char *)r);
+		    if (lastfr == r) lastfr = NULL;
 		}
 		modflg++;
 		FullUpdate++;
@@ -131,7 +132,7 @@ add_frange(struct ent *or_left, struct ent *or_right, struct ent *ir_left,
 	}
 
 	r->r_next = frame_base;
-	r->r_prev = (struct frange *)0;
+	r->r_prev = NULL;
 	if (frame_base)
 	    frame_base->r_prev = r;
 	frame_base = r;
@@ -147,14 +148,14 @@ clean_frange()
     register struct frange *nextfr;
 
     fr = frame_base;
-    frame_base = (struct frange *)0;
+    frame_base = NULL;
 
     while (fr) {
 	nextfr = fr->r_next;
 	scxfree((char *)fr);
 	fr = nextfr;
     }
-    lastfr = 0;
+    lastfr = NULL;
 }
 
 struct frange *
@@ -220,9 +221,9 @@ list_frames(FILE *f)
 
     for (r = nextr = frame_base; nextr; r = nextr, nextr = r->r_next) /* */ ;
     while (r) {
-	fprintf(f, "  %-30s %s\n", r_name(r->or_left->row, r->or_left->col,
-		r->or_right->row, r->or_right->col),
-		r_name(r->ir_left->row, r->ir_left->col,
+	fprintf(f, "  %-30s", r_name(r->or_left->row, r->or_left->col,
+		r->or_right->row, r->or_right->col));
+	fprintf(f, " %s\n", r_name(r->ir_left->row, r->ir_left->col,
 		r->ir_right->row, r->ir_right->col));
 	if (brokenpipe) return;
 	r = r->r_prev;

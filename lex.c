@@ -7,7 +7,7 @@
  *
  *              More mods Robert Bond, 12/86
  *		More mods by Alan Silverstein, 3/88, see list of changes.
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  *
  */
 
@@ -29,11 +29,12 @@
 #include <ieeefp.h>
 #endif /* IEEE_MATH */
 
+#include <stdlib.h>
 #include <curses.h>
 #include <signal.h>
 #include <setjmp.h>
-#include "sc.h"
 #include <ctype.h>
+#include "sc.h"
 
 #ifdef NONOTIMEOUT
 #define	notimeout(a1, a2)
@@ -63,10 +64,10 @@ extern int VMS_read_raw;   /*sigh*/
 extern YYSTYPE yylval;
 #endif /* hpux */
 
-char *strtof(char *p, double *res);
-
 jmp_buf wakeup;
 jmp_buf fpe_buf;
+
+bool decimal = FALSE;
 
 #ifdef SIGVOID
 void
@@ -131,7 +132,7 @@ yylex()
 	 *  tokens made up of alphanumeric chars and '_' (a function or
 	 *  token or command or a range name)
 	 */
-	while (isalpha(*p)) {
+	while (isalpha(*p) && isascii(*p)) {
 	    p++;
 	    tokenl++;
 	}
@@ -174,16 +175,22 @@ yylex()
 	    }
 	    if (ret == WORD) {
 		struct range *r;
+		char *path;
 		if (!find_range(tokenst, tokenl,
-			(struct ent *)0, (struct ent *)0, &r) &&
-			strlen(r->r_name) == tokenl) {
+			(struct ent *)0, (struct ent *)0, &r)) {
 		    yylval.rval.left = r->r_left;
 		    yylval.rval.right = r->r_right;
 		    if (r->r_is_range)
 		        ret = RANGE;
 		    else
 			ret = VAR;
+		} else if ((path = scxmalloc((unsigned)PATHLEN)) &&
+			plugin_exists(tokenst, tokenl, path)) {
+		    strcat(path, p);
+		    yylval.sval = path;
+		    ret = PLUGIN;
 		} else {
+		    scxfree(path);
 		    linelim = p-line;
 		    yyerror("Unintelligible word");
 		}
@@ -234,14 +241,25 @@ yylex()
 		    ret = NUMBER;
 		    yylval.ival = (int)v;
 		    dateflag = 2;
+		} else if (*p == 'e' || *p == 'E') {
+		    while (isdigit(*++p)) /* */;
+		    if (isalpha(*p) || *p == '_') {
+			linelim = p - line;
+			return (yylex());
+		    } else
+			ret = FNUMBER;
 		} else if (isalpha(*p) || *p == '_') {
 		    linelim = p - line;
 		    return (yylex());
 		}
 	    }
-	    if (!dateflag && (*p=='.' || *p == 'e' || *p == 'E')) {
+	    if ((!dateflag && *p=='.') || ret == FNUMBER) {
 		ret = FNUMBER;
-		p = strtof(nstart, &yylval.fval);
+		yylval.fval = strtod(nstart, &p);
+		if (!finite(yylval.fval))
+		    ret = K_ERR;
+		else
+		    decimal = TRUE;
 	    } else {
 		/* A NUMBER must hold at least MAXROW and MAXCOL */
 		/* This is consistent with a short row and col in struct ent */
@@ -264,7 +282,7 @@ yylex()
     } else if (*p=='"') {
 	char *ptr;
         ptr = p+1;	/* "string" or "string\"quoted\"" */
-        while(*ptr && ((*ptr != '"') || (*(ptr-1) == '\\')))
+        while (*ptr && ((*ptr != '"') || (*(ptr-1) == '\\')))
 	    ptr++;
         ptr = scxmalloc((unsigned)(ptr-p));
 	yylval.sval = ptr;
@@ -292,6 +310,37 @@ yylex()
     return ret;
 }
 
+/*
+* This is a very simpleminded test for plugins:  does the file merely exist
+* in the plugin directories.  Perhaps should test for it being executable
+*/
+
+int
+plugin_exists(char *name, int len, char *path)
+{
+#ifndef MSDOS
+    FILE *fp;
+    static char *HomeDir;
+
+    if ((HomeDir = getenv("HOME"))) {
+	strcpy((char *)path, HomeDir);
+	strcat((char *)path, "/.sc/plugins/");
+	strncat((char *)path, name, len);
+	if (fp = fopen((char *)path, "r")) {
+	    fclose(fp);
+	    return 1;
+	}
+    }
+    strcpy((char *)path, LIBDIR);
+    strcat((char *)path, "/plugins/");
+    strncat((char *)path, name, len);
+    if (fp = fopen((char *)path, "r")) {
+	fclose(fp);
+	return 1;
+    }
+#endif
+    return 0;
+}
 
 /*
  * Given a token string starting with a symbolic column name and its valid
@@ -365,10 +414,10 @@ nmgetch()
        c = getchar();
 
     switch (c) {
-	case SMG$K_TRM_LEFT:  c = ctl('b'); break;
-	case SMG$K_TRM_RIGHT: c = ctl('f'); break;
-	case SMG$K_TRM_UP:    c = ctl('p'); break;
-	case SMG$K_TRM_DOWN:  c = ctl('n'); break;
+	case SMG$K_TRM_LEFT:  c = KEY_LEFT;  break;
+	case SMG$K_TRM_RIGHT: c = KEY_RIGHT; break;
+	case SMG$K_TRM_UP:    c = ctl('p');  break;
+	case SMG$K_TRM_DOWN:  c = ctl('n');  break;
 	default:   c = c & A_CHARTEXT;
     }
     return (c);
@@ -408,7 +457,7 @@ VMS_MSG (int status)
 
 struct key_map {
     char *k_str;
-    char k_val;
+    int k_val;
     char k_index;
 }; 
 
@@ -456,8 +505,8 @@ initkbd()
     if (tgetent(buf, ktmp) <= 0)
 	return;
 
-    km[0].k_str = tgetstr("kl", &p); km[0].k_val = ctl('b');
-    km[1].k_str = tgetstr("kr", &p); km[1].k_val = ctl('f');
+    km[0].k_str = tgetstr("kl", &p); km[0].k_val = KEY_LEFT;
+    km[1].k_str = tgetstr("kr", &p); km[1].k_val = KEY_RIGHT;
     km[2].k_str = tgetstr("ku", &p); km[2].k_val = ctl('p');
     km[3].k_str = tgetstr("kd", &p); km[3].k_val = ctl('n');
 
@@ -669,99 +718,4 @@ int
 time_out(int signo)
 {
     longjmp(wakeup, 1);
-}
-
-/*
- * This converts a floating point number of the form
- * [s]ddd[.d*][esd*]  where s can be a + or - and e is E or e.
- * to floating point. 
- * p is advanced.
- */
-
-char *
-strtof(char *p, double *res)
-{
-    double acc;
-    int sign;
-    double fpos;
-    int exp;
-    int exps;
-#ifdef SIGVOID
-    void (*sig_save)();
-#else
-    int (*sig_save)();
-#endif
-    sig_save = signal(SIGFPE, fpe_trap);
-    if (setjmp(fpe_buf)) {
-	error("Floating point exception\n");
-	*res = 0.0; 
-        (void) signal(SIGFPE, sig_save);
-	return (p);
-    }
-    acc = 0.0;
-    sign = 1;
-    exp = 0;
-    exps = 1;
-    if (*p == '+')
-        p++;
-    else if (*p == '-') {
-        p++;
-        sign = -1;
-    }
-    while (isdigit(*p)) {
-        acc = acc * 10.0 + (double)(*p - '0');
-        p++;
-    }
-    if (*p == 'e' || *p == 'E') {
-	    p++;
-        if (*p == '+')
-	    p++;
-        else if (*p == '-') {
-	    p++;
-	    exps = -1;
-        }
-        while(isdigit(*p)) {
-	    exp = exp * 10 + (*p - '0');
-	    p++;
-        }
-    }
-    if (*p == '.') {
-	fpos = 1.0/10.0;
-	p++;
-	while(isdigit(*p)) {
-	    acc += (*p - '0') * fpos;
-	    fpos *= 1.0/10.0;
-	    p++;
-	}
-    }
-    if (*p == 'e' || *p == 'E') {
-	exp = 0;
-	exps = 1;
-        p++;
-	if (*p == '+')
-	    p++;
-	else if (*p == '-') {
-	    p++;
-	    exps = -1;
-	}
-	while(isdigit(*p)) {
-	    exp = exp * 10 + (*p - '0');
-	    p++;
-	}
-    }
-    if (exp) {
-	if (exps > 0)
-	    while (exp--)
-		acc *= 10.0;
-	else
-	    while (exp--)
-		acc *= 1.0/10.0;
-    }
-    if (sign > 0)
-        *res = acc;
-    else
-	*res = -acc;
-
-    (void) signal(SIGFPE, sig_save);
-    return(p);
 }

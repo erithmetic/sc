@@ -1,6 +1,6 @@
 $! VMS command file to build SC and PSC (requires bison) on VMS
 $! SC:
-$! $Revision: 7.13 $
+$! $Revision: 7.16 $
 $! bison -d gram.y
 $! ren gram_tab.c gram.c
 $ cc'p1'  /define=("SIMPLE","SIGVOID") sc.c

@@ -2,10 +2,10 @@
 /*	SC	A Spreadsheet Calculator
  *		Color manipulation routines
  *
- *		Chuck Martin <cmartin@bigfoot.com>
+ *		Chuck Martin <nrocinu@myrealbox.com>
  *		Original Version Created:  January, 2001
  *
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  */
 
 #include <sys/types.h>
@@ -48,7 +48,7 @@ initcolor(int colornum)
 /* default for negative numbers */
     if (!colornum || colornum == 2) {
 	cpairs[1]->fg = COLOR_RED;
-	cpairs[1]->bg = COLOR_BLUE;
+	cpairs[1]->bg = COLOR_WHITE;
 	cpairs[1]->expr = NULL;
 	init_pair(2, cpairs[1]->fg, cpairs[1]->bg);
     }
@@ -61,6 +61,7 @@ initcolor(int colornum)
 	init_pair(3, cpairs[2]->fg, cpairs[2]->bg);
     }
 
+/* default for '*' marking cells with attached notes */
     if (!colornum || colornum == 4) {
 	cpairs[3]->fg = COLOR_BLACK;
 	cpairs[3]->bg = COLOR_YELLOW;
@@ -105,7 +106,7 @@ change_color(int pair, struct enode *e)
 {
     int v;
 
-    if ((pair--) < 0 || pair > 7) {
+    if ((--pair) < 0 || pair > 7) {
 	error("Invalid color number");
 	return;
     }

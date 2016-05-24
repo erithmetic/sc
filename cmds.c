@@ -7,7 +7,7 @@
  *
  *              More mods Robert Bond, 12/86
  *
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  */
 
 #include <sys/types.h>
@@ -22,6 +22,7 @@
 
 #include <curses.h>
 #include <time.h>
+#include <utime.h>
 #if defined(BSD42) || defined(BSD43) || defined(VMS)
 #include <sys/file.h>
 #else
@@ -57,6 +58,7 @@ extern	int  Vopt;
 extern	struct go_save gs;
 int macrofd;
 int cslop;
+struct impexfilt *filt = NULL; /* root of list of impex filters */
 
 /* copy the current row (currow) and place the cursor in the new row */
 void
@@ -81,13 +83,8 @@ duprow()
 	if (p) {
 	    register struct ent *n;
 	    n = lookat(currow, curcol);
-	    (void) copyent(n, p, 1, 0);
+	    (void) copyent(n, p, 1, 0, 0, 0, maxrow, maxcol, 0);
 	}
-    }
-    for (curcol = c1; curcol <= c2; curcol++) {
-	register struct ent *p = *ATBL(tbl, currow, curcol);
-	if (p && (p->flags & is_valid) && !p->expr)
-	    break;
     }
     curcol = coltmp;
 }
@@ -109,13 +106,8 @@ dupcol()
 	if (p) {
 	    register struct ent *n;
 	    n = lookat(currow, curcol);
-	    copyent(n, p, 0, 1);
+	    copyent(n, p, 0, 1, 0, 0, maxrow, maxcol, 0);
 	}
-    }
-    for (currow = 0; currow <= maxrow; currow++) {
-	register struct ent *p = *ATBL(tbl, currow, curcol);
-	if (p && (p -> flags & is_valid) && !p -> expr)
-	    break;
     }
     currow = rowtmp;
 }
@@ -142,13 +134,12 @@ insertrow(int arg, int delta)
     if ((fr = find_frange(currow + delta, curcol))) {
 	move_area(currow + arg + delta, fr->or_left->col, currow + delta,
 		fr->or_left->col, fr->or_right->row, fr->or_right->col);
-	flush_saved();
 	if (!delta && fr->ir_left->row == currow + arg)
 	    fr->ir_left = lookat(fr->ir_left->row - arg, fr->ir_left->col);
 	if (delta && fr->ir_right->row == currow)
 	    fr->ir_right = lookat(fr->ir_right->row + arg, fr->ir_right->col);
 
-	for (i=0; i < 27; i++) {	/* update all marked cells */
+	for (i = 0; i < 37; i++) {	/* update all marked cells */
 	    if (savedrow[i] >= currow + delta &&
 		    savedcol[i] >= fr->or_left->col &&
 		    savedcol[i] <= fr->or_right->col)
@@ -170,6 +161,21 @@ insertrow(int arg, int delta)
 		gs.stcol >= fr->or_left->col &&
 		gs.stcol <= fr->or_right->col)
 	    gs.strow += arg;
+	for (r = 0; r <= maxrow; r++) {
+	    for (c = 0; c <= maxcol; c++) {
+		pp = ATBL(tbl, r, c);
+		if (*pp) {
+		    if ((*pp)->nrow >= currow + delta &&
+			    (*pp)->ncol >= fr->or_left->col &&
+			    (*pp)->ncol <= fr->or_right->col)
+			((*pp)->nrow) += arg;
+		    if ((*pp)->nlastrow >= currow + delta &&
+			    (*pp)->nlastcol >= fr->or_left->col &&
+			    (*pp)->nlastcol <= fr->or_right->col)
+			((*pp)->nlastrow) += arg;
+		}
+	    }
+	}
     } else {
 	
 	/*
@@ -189,7 +195,7 @@ insertrow(int arg, int delta)
 	}
 	tbl[r] = tmprow;		/* the last row was never used.... */
 
-	for (i=0; i < 27; i++) {	/* update all marked cells */
+	for (i = 0; i < 37; i++) {	/* update all marked cells */
 	    if (savedrow[i] >= currow + delta)
 		savedrow[i] += arg;
 	    if (savedstrow[i] >= currow + delta)
@@ -263,7 +269,7 @@ insertcol(int arg, int delta)
     }
 
     /* Update all marked cells. */
-    for (c=0; c < 27; c++) {
+    for (c=0; c < 37; c++) {
 	if (savedcol[c] >= curcol + delta)
 	    savedcol[c] += arg;
 	if (savedstcol[c] >= curcol + delta)
@@ -305,10 +311,12 @@ insertcol(int arg, int delta)
 void
 deleterow(register int arg)
 {
-    int rs = maxrow - currow + 1;
     int i;
-    char buf[50];
+    int rs = maxrow - currow + 1;
     struct frange *fr;
+    struct ent *p;
+    struct ent *obuf = NULL;
+    char buf[50];
 
     if ((fr = find_frange(currow, curcol)))
 	rs = fr->or_right->row - currow + 1;
@@ -326,23 +334,57 @@ deleterow(register int arg)
 	else {
 	    FullUpdate++;
 	    modflg++;
+	    if (dbidx < 0) dbidx++;
+	    delbuf[dbidx] = delbuf[DELBUFSIZE - 1];
+	    delbuffmt[dbidx] = delbuffmt[DELBUFSIZE - 1];
+	    delbuf[DELBUFSIZE - 1] = NULL;
+	    delbuffmt[DELBUFSIZE - 1] = NULL;
+	    for (i = dbidx + 1; i < DELBUFSIZE; i++) {
+		if (delbuf[i] == delbuf[dbidx]) {
+		    delbuf[dbidx] = NULL;
+		    delbuffmt[dbidx] = NULL;
+		    break;
+		}
+	    }
 	    flush_saved();
+	    if (qbuf) {
+		if (dbidx < 0) dbidx++;
+		delbuf[dbidx] = delbuf[qbuf];
+		delbuffmt[dbidx] = delbuffmt[qbuf];
+		flush_saved();
+		obuf = delbuf[qbuf];	/* orig. contents of the del. buffer */
+	    }
 	    sync_refs();
 	    erase_area(currow, fr->or_left->col, currow + arg - 1,
-		    fr->or_right->col);
+		    fr->or_right->col, 0);
 	    fix_ranges(currow, -1, currow + arg - 1, -1, -1, -1);
+	    for (i = 0; i < DELBUFSIZE; i++)
+		if ((obuf && delbuf[i] == obuf) || (qbuf && i == qbuf)) {
+		    delbuf[i] = delbuf[dbidx];
+		    delbuffmt[i] = delbuffmt[dbidx];
+		}
+	    qbuf = 0;
+	    for (i = DELBUFSIZE - 1; i > DELBUFSIZE - 9; i--) {
+		delbuf[i] = delbuf[i-1];
+		delbuffmt[i] = delbuffmt[i-1];
+	    }
+	    delbuf[DELBUFSIZE - 9] = delbuf[dbidx];
+	    delbuffmt[DELBUFSIZE - 9] = delbuffmt[dbidx];
+	    for (p = delbuf[dbidx]; p; p = p->next)
+		p->flags &= ~may_sync;
+	    if (currow + arg > fr->ir_right->row &&
+		    fr->ir_right->row >= currow)
+		fr->ir_right = lookat(currow - 1, fr->ir_right->col);
 	    if (currow + arg > fr->or_right->row)
 		fr->or_right = lookat(currow - 1, fr->or_right->col);
-	    else {
+	    else
 		move_area(currow, fr->or_left->col, currow + arg,
 			fr->or_left->col, fr->or_right->row, fr->or_right->col);
-		flush_saved();
-	    }
-	    if (currow + arg > fr->ir_right->row && fr->ir_right->row >= currow)
-		fr->ir_right = lookat(currow - 1, fr->ir_right->col);
+	    if (fr->ir_left->row > fr->ir_right->row)
+		add_frange(fr->or_left, fr->or_right, NULL, NULL, 0, 0, 0, 0);
 
 	    /* Update all marked cells. */
-	    for (i=0; i < 27; i++) {
+	    for (i = 0; i < 37; i++) {
 		if (savedcol[i] >= fr->or_left->col &&
 			savedcol[i] <= fr->or_right->col) {
 		    if (savedrow[i] >= currow && savedrow[i] < currow + arg)
@@ -387,11 +429,44 @@ deleterow(register int arg)
 	if (any_locked_cells(currow, 0, currow + arg - 1, maxcol))
 	    error("Locked cells encountered. Nothing changed");
 	else {
+	    if (dbidx < 0) dbidx++;
+	    delbuf[dbidx] = delbuf[DELBUFSIZE - 1];
+	    delbuffmt[dbidx] = delbuffmt[DELBUFSIZE - 1];
+	    delbuf[DELBUFSIZE - 1] = NULL;
+	    delbuffmt[DELBUFSIZE - 1] = NULL;
+	    for (i = dbidx + 1; i < DELBUFSIZE; i++) {
+		if (delbuf[i] == delbuf[dbidx]) {
+		    delbuf[dbidx] = NULL;
+		    delbuffmt[dbidx] = NULL;
+		    break;
+		}
+	    }
 	    flush_saved();
+	    if (qbuf) {
+		if (dbidx < 0) dbidx++;
+		delbuf[dbidx] = delbuf[qbuf];
+		delbuffmt[dbidx] = delbuffmt[qbuf];
+		flush_saved();
+		obuf = delbuf[qbuf];	/* orig. contents of the del. buffer */
+	    }
 	    sync_refs();
-	    erase_area(currow, 0, currow + arg - 1, maxcol);
+	    erase_area(currow, 0, currow + arg - 1, maxcol, 0);
 	    fix_ranges(currow, -1, currow + arg - 1, -1, -1, -1);
 	    closerow(currow, arg);
+	    for (i = 0; i < DELBUFSIZE; i++)
+		if ((obuf && delbuf[i] == obuf) || (qbuf && i == qbuf)) {
+		    delbuf[i] = delbuf[dbidx];
+		    delbuffmt[i] = delbuffmt[dbidx];
+		}
+	    qbuf = 0;
+	    for (i = DELBUFSIZE - 1; i > DELBUFSIZE - 9; i--) {
+		delbuf[i] = delbuf[i-1];
+		delbuffmt[i] = delbuffmt[i-1];
+	    }
+	    delbuf[DELBUFSIZE - 9] = delbuf[dbidx];
+	    delbuffmt[DELBUFSIZE - 9] = delbuffmt[dbidx];
+	    for (p = delbuf[dbidx]; p; p = p->next)
+		p->flags &= ~may_sync;
 	}
     }
 }
@@ -400,8 +475,10 @@ void
 yankrow(int arg)
 {
     int rs = maxrow - currow + 1;
+    int i, qtmp;
     char buf[50];
     struct frange *fr;
+    struct ent *obuf;
 
     if ((fr = find_frange(currow, curcol)))
 	rs = fr->or_right->row - currow + 1;
@@ -412,23 +489,53 @@ yankrow(int arg)
 	error(buf);
 	return;
     }
-    if (fr) {
-	sync_refs();
+    sync_refs();
+    if (dbidx < 0) dbidx++;
+    delbuf[dbidx] = delbuf[DELBUFSIZE - 10];
+    delbuffmt[dbidx] = delbuffmt[DELBUFSIZE - 10];
+    delbuf[DELBUFSIZE - 10] = NULL;
+    delbuffmt[DELBUFSIZE - 10] = NULL;
+    for (i = dbidx + 1; i < DELBUFSIZE; i++) {
+	if (delbuf[i] == delbuf[dbidx]) {
+	    delbuf[dbidx] = NULL;
+	    delbuffmt[dbidx] = NULL;
+	    break;
+	}
+    }
+    flush_saved();
+    if (qbuf) {
+	if (dbidx < 0) dbidx++;
+	delbuf[dbidx] = delbuf[qbuf];
+	delbuffmt[dbidx] = delbuffmt[qbuf];
 	flush_saved();
+	obuf = delbuf[qbuf];	/* orig. contents of the del. buffer */
+    }
+    qtmp = qbuf;
+    qbuf = 0;
+    if (fr) {
 	yank_area(currow, fr->or_left->col, currow + arg - 1,
 		fr->or_right->col);
     } else {
-	sync_refs();
-	flush_saved();
 	yank_area(currow, 0, currow + arg - 1, maxcol);
     }
+    qbuf = qtmp;
+    for (i = 0; i < DELBUFSIZE; i++)
+	if ((obuf && delbuf[i] == obuf) || (qbuf && i == qbuf)) {
+	    delbuf[i] = delbuf[dbidx];
+	    delbuffmt[i] = delbuffmt[dbidx];
+	}
+    qbuf = 0;
+    delbuf[DELBUFSIZE - 10] = delbuf[dbidx];
+    delbuffmt[DELBUFSIZE - 10] = delbuffmt[dbidx];
 }
 
 void
 yankcol(int arg)
 {
     int cs = maxcol - curcol + 1;
+    int i, qtmp;
     char buf[50];
+    struct ent *obuf;
 
     if (cs - arg < 0) {
     	cs = cs > 0 ? cs : 0;
@@ -438,12 +545,44 @@ yankcol(int arg)
 	return;
     }
     sync_refs();
+    if (dbidx < 0) dbidx++;
+    delbuf[dbidx] = delbuf[DELBUFSIZE - 10];
+    delbuffmt[dbidx] = delbuffmt[DELBUFSIZE - 10];
+    delbuf[DELBUFSIZE - 10] = NULL;
+    delbuffmt[DELBUFSIZE - 10] = NULL;
+    for (i = dbidx + 1; i < DELBUFSIZE; i++) {
+	if (delbuf[i] == delbuf[dbidx]) {
+	    delbuf[dbidx] = NULL;
+	    delbuffmt[dbidx] = NULL;
+	    break;
+	}
+    }
     flush_saved();
+    if (qbuf) {
+	if (dbidx < 0) dbidx++;
+	delbuf[dbidx] = delbuf[qbuf];
+	delbuffmt[dbidx] = delbuffmt[qbuf];
+	flush_saved();
+	obuf = delbuf[qbuf];	/* orig. contents of the del. buffer */
+    }
+    qtmp = qbuf;
+    qbuf = 0;
     yank_area(0, curcol, maxrow, curcol + arg - 1);
+    qbuf = qtmp;
+    for (i = 0; i < DELBUFSIZE; i++)
+	if ((obuf && delbuf[i] == obuf) || (qbuf && i == qbuf)) {
+	    delbuf[i] = delbuf[dbidx];
+	    delbuffmt[i] = delbuffmt[dbidx];
+	}
+    qbuf = 0;
+    delbuf[DELBUFSIZE - 10] = delbuf[dbidx];
+    delbuffmt[DELBUFSIZE - 10] = delbuffmt[dbidx];
 }
 
+/* ignorelock is used when sorting so that locked cells can still be sorted */
+
 void
-erase_area(int sr, int sc, int er, int ec)
+erase_area(int sr, int sc, int er, int ec, int ignorelock)
 {
     int r, c;
     struct ent **pp;
@@ -470,15 +609,22 @@ erase_area(int sr, int sc, int er, int ec)
     (void) lookat(sr, sc);
     (void) lookat(er, ec);
 
-    dbidx++;
+    delbuffmt[++dbidx] = (char*)scxmalloc((4*(ec-sc+1)+(er-sr+1))*sizeof(char));
+    for (c = sc; c <= ec; c++) {
+	delbuffmt[dbidx][4*(c-sc)] = (char)fwidth[c];
+	delbuffmt[dbidx][4*(c-sc)+1] = (char)precision[c];
+	delbuffmt[dbidx][4*(c-sc)+2] = (char)realfmt[c];
+	delbuffmt[dbidx][4*(c-sc)+3] = (char)col_hidden[c];
+    }
     for (r = sr; r <= er; r++) {
 	for (c = sc; c <= ec; c++) {
 	    pp = ATBL(tbl, r, c);
-	    if (*pp && !((*pp)->flags&is_locked)) {
-		free_ent(*pp);
+	    if (*pp && (!((*pp)->flags&is_locked) || ignorelock)) {
+		free_ent(*pp, 0);
 		*pp = NULL;
 	    }
 	}
+	delbuffmt[dbidx][4*(ec-sc+1)+(r-sr)] = (char)row_hidden[r];
     }
 }
 
@@ -506,8 +652,8 @@ yank_area(int sr, int sc, int er, int ec)
     c = curcol;
     curcol = sc;
 
-    erase_area(sr, sc, er, ec);
-    pullcells('m');
+    erase_area(sr, sc, er, ec, 0);
+    pullcells('p');
 
     currow = r;
     curcol = c;
@@ -541,13 +687,9 @@ move_area(int dr, int dc, int sr, int sc, int er, int ec)
     curcol = sc;
 
     /* First we erase the source range, which puts the cells on the delete
-     * buffer stack.  The pullcells(0) then makes a copy in the original
-     * location, which we then erase, putting the copy on the delete buffer
-     * stack, too.
+     * buffer stack.
      */
-    erase_area(sr, sc, er, ec);
-    pullcells(0);
-    erase_area(sr, sc, er, ec);
+    erase_area(sr, sc, er, ec, 0);
 
     currow = r;
     curcol = c;
@@ -557,20 +699,19 @@ move_area(int dr, int dc, int sr, int sc, int er, int ec)
     /* Now we erase the destination range, which adds it to the delete buffer
      * stack, but then we flush it off.  We then move the original source
      * range from the stack to the destination range, adjusting the addresses
-     * as we go, which leaves only the copy on the stack for future pulls.
+     * as we go, leaving the stack in its original state.
      */
-    erase_area(dr, dc, er + deltar, ec + deltac);
+    erase_area(dr, dc, er + deltar, ec + deltac, 0);
     flush_saved();
-    for (p = delbuf[dbidx - 1]; p; p = p->next) {
+    for (p = delbuf[dbidx]; p; p = p->next) {
 	pp = ATBL(tbl, p->row + deltar, p->col + deltac);
 	*pp = p;
 	p->row += deltar;
 	p->col += deltac;
 	p->flags &= ~is_deleted;
     }
-
-    delbuf[dbidx - 1] = delbuf[dbidx];
-    delbuf[dbidx--] = NULL;
+    delbuf[dbidx] = NULL;
+    delbuffmt[dbidx--] = NULL;
 }
 
 /*
@@ -616,16 +757,25 @@ valueize_area(int sr, int sc, int er, int ec)
 void
 pullcells(int to_insert)
 {
+    struct ent *obuf;
     struct ent *p, *n;
     struct ent **pp;
     int deltar, deltac;
     int minrow, mincol;
     int mxrow, mxcol;
     int numrows, numcols;
+    int i;
     struct frange *fr;
+    
+    if (qbuf && delbuf[qbuf]) {
+	delbuf[++dbidx] = delbuf[qbuf];
+	delbuffmt[dbidx] = delbuffmt[qbuf];
+    }
+    obuf = delbuf[dbidx];	/* orig. contents of the del. buffer */
 
-    if (dbidx < 0) {
+    if ((qbuf && !delbuf[qbuf]) || dbidx < 0) {
 	error("No data to pull");
+	qbuf = 0;
 	return;
     }
 
@@ -643,68 +793,110 @@ pullcells(int to_insert)
 	    mincol = p->col;
 	if (p->col > mxcol)
 	    mxcol = p->col;
+	p->flags |= may_sync;
     }
 
     numrows = mxrow - minrow + 1;
     numcols = mxcol - mincol + 1;
     deltar = currow - minrow;
     deltac = curcol - mincol;
-    
+
+    if (to_insert == 'C') {
+	minrow = 0;
+	mincol = 0;
+	mxrow = maxrows;
+	mxcol = maxcols;
+    }
 
     if (to_insert == 'r') {
 	insertrow(numrows, 0);
 	if (fr = find_frange(currow, curcol))
 	    deltac = fr->or_left->col - mincol;
-	else
+	else {
+	    for (i = 0; i < numrows; i++)
+		row_hidden[currow+i] = delbuffmt[dbidx][4*numcols+i];
 	    deltac = 0;
+	}
     } else if (to_insert == 'c') {
 	insertcol(numcols, 0);
+	for (i = 0; i < numcols; i++) {
+	    fwidth[curcol+i] = delbuffmt[dbidx][4*i];
+	    precision[curcol+i] = delbuffmt[dbidx][4*i+1];
+	    realfmt[curcol+i] = delbuffmt[dbidx][4*i+2];
+	    col_hidden[curcol+i] = delbuffmt[dbidx][4*i+3];
+	}
 	deltar = 0;
     } else if (to_insert == 'x') {	/* Do an exchange. */
-	struct ent *tmp;
+	struct ent *tmpbuf;
+	char *tmpfmt;
 
-	/* Save the original contents of the destination range in preparation
-	 * for the exchange.
+	/* Save the original contents of the destination range on the
+	 * delete buffer stack in preparation for the exchange, then swap
+	 * the top two pointers on the stack, so that the original cells
+	 * to be pulled are still on top.
 	 */
 	erase_area(minrow + deltar, mincol + deltac, mxrow + deltar,
-		mxcol + deltac);
-	tmp = delbuf[dbidx];
+		mxcol + deltac, 0);
+	tmpbuf = delbuf[dbidx];
 	delbuf[dbidx] = delbuf[dbidx - 1];
-	delbuf[dbidx - 1] = tmp;
+	delbuf[dbidx - 1] = tmpbuf;
+	tmpfmt = delbuffmt[dbidx];
+	delbuffmt[dbidx] = delbuffmt[dbidx - 1];
+	delbuffmt[dbidx - 1] = tmpfmt;
+    } else if (to_insert == 'p') {
+	erase_area(minrow + deltar, mincol + deltac, mxrow + deltar,
+		mxcol + deltac, 0);
+	sync_refs();
+	flush_saved();
+    } else if (to_insert == 't') {
+	erase_area(minrow + deltar, mincol + deltac,
+		minrow + deltar + mxcol - mincol,
+		mincol + deltac + mxrow - minrow, 0);
+	sync_refs();
+	flush_saved();
     }
 
     FullUpdate++;
     modflg++;
 
-    /* First copy the cells from the delete buffer into the destination
-     * range.
+    /* At this point, we copy the cells from the delete buffer into the
+     * destination range.
      */
     for (p = delbuf[dbidx]; p; p = p->next) {
-	if (to_insert == 't')
-	    /* Transpose rows and columns while pulling. */
+	if (to_insert == 't')	/* Transpose rows and columns while pulling. */
 	    n = lookat(minrow + deltar + p->col - mincol,
 		    mincol + deltac + p->row - minrow);
 	else
 	    n = lookat(p->row + deltar, p->col + deltac);
-	(void) clearent(n);
-	copyent(n, p, 0, 0);
-	n->flags = p->flags & ~is_deleted;
+	copyent(n, p, deltar, deltac, minrow, mincol, mxrow, mxcol, to_insert);
     }
 
     /* Now exchange them so that the original cells from the delete buffer
      * are in the destination range instead of the copies.  When doing a
      * "pull exchange" ("px" or "pullxchg"), exchange the original contents
      * of the destination range with the contents of the delete buffer
-     * instead.  Don't do this if called from move_area() or when transposing.
+     * instead.  Don't do this if transposing or merging (including merging
+     * cell formats), or if the expressions in the destination cells have
+     * been adjusted during a copy.
      */
-    if (to_insert && to_insert != 't') {
+    if (to_insert != 't' && to_insert != 'm' && to_insert != 'f' &&
+	    to_insert != 'C') {
 	if (to_insert == 'x') {
-	    struct ent *tmp = delbuf[dbidx];
+	    struct ent *tmpbuf = delbuf[dbidx];
+	    char *tmpfmt = delbuffmt[dbidx];
+
 	    delbuf[dbidx] = delbuf[dbidx - 1];
-	    delbuf[dbidx - 1] = tmp;
+	    delbuf[dbidx - 1] = tmpbuf;
+	    delbuffmt[dbidx] = delbuffmt[dbidx - 1];
+	    delbuffmt[dbidx - 1] = tmpfmt;
 	} else
-	    erase_area(minrow + deltar, mincol + deltac, mxrow + deltar,
-		    mxcol + deltac);
+	    for (p = delbuf[dbidx++]; p; p = p->next) {
+		pp = ATBL(tbl, p->row + deltar, p->col + deltac);
+		if (*pp && !((*pp)->flags & is_locked)) {
+		    free_ent(*pp, 1);
+		    *pp = NULL;
+		}
+	    }
 	for (p = delbuf[dbidx - 1]; p; p = p->next) {
 	    pp = ATBL(tbl, p->row + deltar, p->col + deltac);
 	    *pp = p;
@@ -724,21 +916,36 @@ pullcells(int to_insert)
 	    p->row -= deltar;
 	    p->col -= deltac;
 	}
+    } else
+	sync_refs();
+    
+    /* Now make sure all references to the pulled cells in all named buffers
+     * point to the new set of cells in the delete buffer.
+     */
+    for (i = 0; i < DELBUFSIZE; i++)
+	if (delbuf[i] == obuf) {
+	    delbuf[i] = delbuf[dbidx];
+	    delbuffmt[i] = delbuffmt[dbidx];
+	}
+    if (qbuf && delbuf[qbuf]) {
+	delbuf[dbidx] = NULL;
+	delbuffmt[dbidx--] = NULL;
     }
+    qbuf = 0;
 }
 
 void
 colshow_op()
 {
     register int i,j;
-    for (i=0; i<maxcols; i++)
+    for (i = 0; i < maxcols; i++)
 	if (col_hidden[i]) 
 	    break;
-    for(j=i; j<maxcols; j++)
+    for(j = i; j < maxcols; j++)
 	if (!col_hidden[j])
 	    break;
     j--;
-    if (i>=maxcols)
+    if (i >= maxcols)
 	error("No hidden columns to show");
     else {
 	(void) sprintf(line,"show %s:", coltoa(i));
@@ -751,16 +958,16 @@ void
 rowshow_op()
 {
     register int i,j;
-    for (i=0; i<maxrows; i++)
+    for (i = 0; i < maxrows; i++)
 	if (row_hidden[i]) 
 	    break;
-    for(j=i; j<maxrows; j++)
+    for(j = i; j < maxrows; j++)
 	if (!row_hidden[j]) {
 	    break;
 	}
     j--;
 
-    if (i>=maxrows)
+    if (i >= maxrows)
 	error("No hidden rows to show");
     else {
 	(void)sprintf(line,"show %d:%d", i, j);
@@ -775,9 +982,6 @@ rowshow_op()
  * and 't', are allowed.  If ch is 'Z', an extra qualifier 'Z' is allowed.
  */
 
-#define SHOWROWS 2
-#define SHOWCOLS 3
-
 int
 get_rcqual(int ch)
 {
@@ -786,19 +990,20 @@ get_rcqual(int ch)
     error("%sow/column:  r: row  c: column%s",
 
 #ifdef KEY_IC
-	    (ch == KEY_IC)	? "Insert r" :
+	(ch == KEY_IC)		? "Insert r" :
 #endif
-	    (ch == 'i')		? "Insert r" :
-	    (ch == 'o')		? "Open r" :
-	    (ch == 'a')		? "Append r" :
-	    (ch == 'd')		? "Delete r" :
-	    (ch == 'y')		? "Yank r" :
-	    (ch == 'p')		? "Pull r" :
-	    (ch == 'v')		? "Values r" :
-	    (ch == 'Z')		? "Zap r" :
-	    (ch == 's')		? "Show r" : "R",
-
-	    (ch == 'p') ? "  m: merge  x: exchange  t: transpose" : "");
+	(ch == 'i')		? "Insert r" :
+	(ch == 'o')		? "Open r" :
+	(ch == 'a')		? "Append r" :
+	(ch == 'd')		? "Delete r" :
+	(ch == 'y')		? "Yank r" :
+	(ch == 'p')		? "Pull r" :
+	(ch == 'v')		? "Values r" :
+	(ch == 'Z')		? "Zap r" :
+	(ch == 's')		? "Show r" : "R",
+	
+	(ch == 'p')		? "  p: paste  m: merge  x: xchg  <MORE>" :
+	(ch == 'Z')		? "  Z: save/exit" : "");
 
     (void) refresh();
 
@@ -808,11 +1013,19 @@ get_rcqual(int ch)
 
 	case 'c':	return ('c');
 
+	case 'p':	return ((ch == 'p') ? 'p' : 0);
+
 	case 'm':	return ((ch == 'p') ? 'm' : 0);
 
 	case 'x':	return ((ch == 'p') ? 'x' : 0);
 
 	case 't':	return ((ch == 'p') ? 't' : 0);
+
+	case 'f':	return ((ch == 'p') ? 'f' : 0);
+
+	case 'C':	return ((ch == 'p') ? 'C' : 0);
+
+	case '.':	return ((ch == 'p') ? '.' : 0);
 
 	case 'Z':	return ((ch == 'Z') ? 'Z' : 0);
 
@@ -826,14 +1039,15 @@ get_rcqual(int ch)
 			    return (0);
 
 	case 'y':	if (ch == 'y') {
-			    flush_saved();
-			    yank_area(currow, curcol, currow, curcol);
+			    yankr(lookat(currow, curcol),
+				    lookat(currow, curcol));
 			    return (ESC);
 			} else
 			    return (0);
 
 	case 'v':	if (ch == 'v') {
 			    valueize_area(currow, curcol, currow, curcol);
+			    modflg++;
 			    return (ESC);
 			} else
 			    return (0);
@@ -853,6 +1067,8 @@ get_rcqual(int ch)
 			    (void) sprintf(line,"deleterow [range] ");
 			else if (ch == 'y')
 			    (void) sprintf(line,"yankrow [range] ");
+			else if (ch == 'Z')
+			    (void) sprintf(line,"hide [range] ");
 			else
 			    return (0);
 			edit_mode();
@@ -874,6 +1090,8 @@ get_rcqual(int ch)
 			    (void) sprintf(line,"deletecol [range] ");
 			else if (ch == 'y')
 			    (void) sprintf(line,"yankcol [range] ");
+			else if (ch == 'Z')
+			    (void) sprintf(line,"hide [range] ");
 			else
 			    return (0);
 			edit_mode();
@@ -912,7 +1130,7 @@ closerow(int rs, int numrow)
 	pp = ATBL(tbl, r, 0);
 	for (c = maxcol + 1; --c >= 0; pp++) {
 	    if (*pp) {
-		free_ent(*pp);
+		free_ent(*pp, 1);
 		*pp = (struct ent *)0;
 	    }
 	}
@@ -930,7 +1148,7 @@ closerow(int rs, int numrow)
     }
 
     /* Update all marked cells. */
-    for (i=0; i < 27; i++) {
+    for (i = 0; i < 37; i++) {
 	if (savedrow[i] >= rs && savedrow[i] < rs + numrow)
 	    savedrow[i] = savedcol[i] = -1;
 	if (savedrow[i] >= rs + numrow)
@@ -984,9 +1202,10 @@ void
 closecol(int arg)
 {
     int r, c, i;
-    register struct ent **pp;
-    register struct ent *q;
     int cs = maxcol - curcol + 1;
+    struct ent **pp;
+    struct ent *p;
+    struct ent *obuf = NULL;
     char buf[50];
 
     if (cs - arg < 0) {
@@ -1000,17 +1219,50 @@ closecol(int arg)
 	error("Locked cells encountered. Nothing changed");
 	return;
     }
+    if (dbidx < 0) dbidx++;
+    delbuf[dbidx] = delbuf[DELBUFSIZE - 1];
+    delbuf[DELBUFSIZE - 1] = NULL;
+    delbuffmt[dbidx] = delbuffmt[DELBUFSIZE - 1];
+    delbuffmt[DELBUFSIZE - 1] = NULL;
+    for (i = dbidx + 1; i < DELBUFSIZE; i++) {
+	if (delbuf[i] == delbuf[dbidx]) {
+	    delbuf[dbidx] = NULL;
+	    delbuffmt[dbidx] = NULL;
+	    break;
+	}
+    }
     flush_saved();
+    if (qbuf) {
+	if (dbidx < 0) dbidx++;
+	delbuf[dbidx] = delbuf[qbuf];
+	delbuffmt[dbidx] = delbuffmt[qbuf];
+	flush_saved();
+	obuf = delbuf[qbuf];	/* orig. contents of the del. buffer */
+    }
     sync_refs();
-    erase_area(0, curcol, maxrow, curcol + arg - 1);
+    erase_area(0, curcol, maxrow, curcol + arg - 1, 0);
     fix_ranges(-1, curcol, -1, curcol + arg - 1, -1, -1);
+    for (i = 0; i < DELBUFSIZE; i++)
+	if ((obuf && delbuf[i] == obuf) || (qbuf && i == qbuf)) {
+	    delbuf[i] = delbuf[dbidx];
+	    delbuffmt[i] = delbuffmt[dbidx];
+	}
+    qbuf = 0;
+    for (i = DELBUFSIZE - 1; i > DELBUFSIZE - 9; i--) {
+	delbuf[i] = delbuf[i-1];
+	delbuffmt[i] = delbuffmt[i-1];
+    }
+    delbuf[DELBUFSIZE - 9] = delbuf[dbidx];
+    delbuffmt[DELBUFSIZE - 9] = delbuffmt[dbidx];
+    for (p = delbuf[dbidx]; p; p = p->next)
+	p->flags &= ~may_sync;
 
     /* clear then copy the block left */
     cs = maxcols - arg - 1;
     for (r=0; r<=maxrow; r++) {
 	for (c = curcol; c - curcol < arg; c++)
-	    if ((q = *ATBL(tbl, r, c)))
-		free_ent(q);
+	    if ((p = *ATBL(tbl, r, c)))
+		free_ent(p, 1);
 
 	pp = ATBL(tbl, r, curcol);
 	for (c=curcol; c <= cs; c++, pp++) {
@@ -1039,7 +1291,7 @@ closecol(int arg)
     }
 
     /* Update all marked cells. */
-    for (i=0; i < 27; i++) {
+    for (i = 0; i < 37; i++) {
 	if (savedcol[i] >= curcol && savedcol[i] < curcol + arg)
 	    savedrow[i] = savedcol[i] = -1;
 	if (savedcol[i] >= curcol + arg)
@@ -1084,6 +1336,9 @@ closecol(int arg)
 	    }
 	}
     }
+    rowsinrange = 1;
+    colsinrange = fwidth[curcol];
+
     FullUpdate++;
     modflg++;
 }
@@ -1094,11 +1349,8 @@ doend(int rowinc, int colinc)
     register struct ent *p;
     int r, c;
 
-    /* Remember the current position */
-    savedrow[0] = currow;
-    savedcol[0] = curcol;
-    savedstrow[0] = strow;
-    savedstcol[0] = stcol;
+    if (!loading)
+	remember(0);
 
     if (VALID_CELL(p, currow, curcol)) {
 	r = currow + rowinc;
@@ -1136,6 +1388,8 @@ doend(int rowinc, int colinc)
         }
 	rowsinrange = 1;
 	colsinrange = fwidth[curcol];
+	if (!loading)
+	    remember(1);
 
 	error ("");	/* clear line */
 	return;
@@ -1181,9 +1435,14 @@ doformat(int c1, int c2, int w, int p, int r)
 
     if (c1 >= maxcols && !growtbl(GROWCOL, 0, c1)) c1 = maxcols-1 ;
     if (c2 >= maxcols && !growtbl(GROWCOL, 0, c2)) c2 = maxcols-1 ;
+    
+    if (w == 0) {
+	error("Width too small - setting to 1");
+	w = 1;
+    }
 
     if (usecurses && w > COLS - rescol - 2) {
-	error("Format too large - Maximum = %d", COLS - rescol - 2);
+	error("Width too large - Maximum = %d", COLS - rescol - 2);
 	w = COLS - rescol - 2;
     }
 
@@ -1209,11 +1468,234 @@ doformat(int c1, int c2, int w, int p, int r)
 }
 
 void
+formatcol(arg)
+{
+    int c, i;
+    int mf = modflg;
+    int *oldformat;
+
+    error("Current format is %d %d %d",
+	    fwidth[curcol], precision[curcol],
+	    realfmt[curcol]);
+    refresh();
+    oldformat = (int *)scxmalloc(arg*3*sizeof(int));
+    for (i = 0; i < arg; i++) {
+	oldformat[i * 3 + 0] = fwidth[i + curcol];
+	oldformat[i * 3 + 1] = precision[i + curcol];
+	oldformat[i * 3 + 2] = realfmt[i + curcol];
+    }
+    c = nmgetch();
+    while (c >= 0 && c != ctl('m') && c != 'q' && c != ESC &&
+	    c != ctl('g') && linelim < 0) {
+	if (c >= '0' && c <= '9')
+	    for (i = curcol; i < curcol + arg; i++)
+		realfmt[i] = c - '0';
+	else
+	    switch (c) {
+		case KEY_LEFT:
+		case '<':
+		case 'h':
+		    for (i = curcol; i < curcol + arg; i++) {
+			fwidth[i]--;
+			if (fwidth[i] < 1)
+			    fwidth[i] = 1;
+		    }
+		    rowsinrange = 1;
+		    colsinrange = fwidth[curcol];
+		    modflg++;
+		    break;
+		case KEY_RIGHT:
+		case '>':
+		case 'l':
+		    for (i = curcol; i < curcol + arg; i++) {
+			fwidth[i]++;
+			if (fwidth[i] > COLS - rescol - 2)
+			    fwidth[i] = COLS - rescol - 2;
+		    }
+		    rowsinrange = 1;
+		    colsinrange = fwidth[curcol];
+		    modflg++;
+		    break;
+		case KEY_DOWN:
+		case '-':
+		case 'j':
+		    for (i = curcol; i < curcol + arg; i++) {
+			precision[i]--;
+			if (precision[i] < 0)
+			    precision[i] = 0;
+		    }
+		    modflg++;
+		    break;
+		case KEY_UP:
+		case '+':
+		case 'k':
+		    for (i = curcol; i < curcol + arg; i++)
+			precision[i]++;
+		    modflg++;
+		    break;
+		case ' ':
+		    if (arg == 1)
+			(void) sprintf(line,
+				"format [for column] %s ",
+				coltoa(curcol));
+		    else {
+			(void) sprintf(line,
+				"format [for columns] %s:",
+				coltoa(curcol));
+			(void) sprintf(line+strlen(line), "%s ",
+				coltoa(curcol+arg-1));
+		    }
+		    linelim = strlen(line);
+		    insert_mode();
+		    error("Current format is %d %d %d",
+			    fwidth[curcol], precision[curcol],
+			    realfmt[curcol]);
+		    continue;
+		case '=':
+		    error("Define format type (0-9):");
+		    refresh();
+		    if ((c = nmgetch()) >= '0' && c <= '9') {
+			if (colformat[c-'0']) {
+			    (void) sprintf(line,
+				    "format %c = \"%s\"", c, colformat[c-'0']);
+			    edit_mode();
+			    linelim = strlen(line) - 1;
+			} else {
+			    (void) sprintf(line,
+				    "format %c = \"", c);
+			    insert_mode();
+			    linelim = strlen(line);
+			}
+			error("");
+		    } else {
+			error("Invalid format type");
+			c = -1;
+		    }
+		    continue;
+		case ctl('l'):
+		    FullUpdate++;
+		    clearok(stdscr, 1);
+		    break;
+		default:
+		    break;
+	    }
+	error("Current format is %d %d %d",
+		fwidth[curcol], precision[curcol],
+		realfmt[curcol]);
+	FullUpdate++;
+	update(1);
+	refresh();
+	if (linelim < 0)
+	    if ((c = nmgetch()) == ESC || c == ctl('g') || c == 'q') {
+		for (i = 0; i < arg; i++) {
+		    fwidth[i + curcol] = oldformat[i * 3 + 0];
+		    precision[i + curcol] = oldformat[i * 3 + 1];
+		    realfmt[i + curcol] = oldformat[i * 3 + 2];
+		}
+		modflg = mf;
+		FullUpdate++;
+		update(1);
+	    }
+    }
+    scxfree((char *)oldformat);
+    if (c >= 0)
+	error("");
+}
+
+void
+ljustify(sr, sc, er, ec)
+{
+    struct ent *p;
+    int i, j;
+
+    if (sr > er) {
+	i = sr;
+	sr = er;
+	er = i;
+    }
+    if (sc > ec) {
+	i = sc;
+	sc = ec;
+	ec = i;
+    }
+    for (i = sr; i <= er; i++) {
+	for (j = sc; j <= ec; j++) {
+	    p = *ATBL(tbl, i, j);
+	    if (p && p->label) {
+		p->flags &= ~is_label;
+		p->flags |= is_leftflush | is_changed;
+		changed++;
+		modflg++;
+	    }
+	}
+    }
+}
+
+void
+rjustify(sr, sc, er, ec)
+{
+    struct ent *p;
+    int i, j;
+
+    if (sr > er) {
+	i = sr;
+	sr = er;
+	er = i;
+    }
+    if (sc > ec) {
+	i = sc;
+	sc = ec;
+	ec = i;
+    }
+    for (i = sr; i <= er; i++) {
+	for (j = sc; j <= ec; j++) {
+	    p = *ATBL(tbl, i, j);
+	    if (p && p->label) {
+		p->flags &= ~(is_label | is_leftflush);
+		p->flags |= is_changed;
+		changed++;
+		modflg++;
+	    }
+	}
+    }
+}
+
+void
+center(sr, sc, er, ec)
+{
+    struct ent *p;
+    int i, j;
+
+    if (sr > er) {
+	i = sr;
+	sr = er;
+	er = i;
+    }
+    if (sc > ec) {
+	i = sc;
+	sc = ec;
+	ec = i;
+    }
+    for (i = sr; i <= er; i++) {
+	for (j = sc; j <= ec; j++) {
+	    p = *ATBL(tbl, i, j);
+	    if (p && p->label) {
+		p->flags &= ~is_leftflush;
+		p->flags |= is_label | is_changed;
+		changed++;
+		modflg++;
+	    }
+	}
+    }
+}
+
+void
 print_options(FILE *f)
 {
     if (
 	autocalc &&
 	!autoinsert &&
+	!autowrap &&
 	!cslop &&
 	!optimize &&
 	!rndtoeven &&
@@ -1222,7 +1704,6 @@ print_options(FILE *f)
 	!numeric &&
 	prescale == 1.0 &&
 	!extfunc &&
-	showcell &&
 	showtop &&
 	tbl_style == 0 &&
 	craction == 0 &&
@@ -1240,6 +1721,8 @@ print_options(FILE *f)
 	(void) fprintf(f," !autocalc");
     if (autoinsert) 
 	(void) fprintf(f," autoinsert");
+    if (autowrap) 
+	(void) fprintf(f," autowrap");
     if (cslop)
 	(void) fprintf(f," cslop");
     if (optimize) 
@@ -1256,8 +1739,6 @@ print_options(FILE *f)
 	(void) fprintf(f, " prescale");
     if (extfunc)
 	(void) fprintf(f, " extfun");
-    if (!showcell)
-	(void) fprintf(f, " !cellcur");
     if (!showtop)
 	(void) fprintf(f, " !toprow");
     if (tbl_style)
@@ -1299,57 +1780,61 @@ printfile(char *fname, int r0, int c0, int rn, int cn)
     char path[1024];
     char *tpp;
 
-    /* printfile will be the [path/]file ---> [path/]file.out */
-    if (*fname == '\0') {
-	strcpy(path, curfile);
+    if (fname) {
+	/* printfile will be the [path/]file ---> [path/]file.out */
+	if (*fname == '\0') {
+	    strcpy(path, curfile);
 
 #ifdef MSDOS
-	namelen = 12;
-	if ((tpp = strrchr(path, '\\')) == NULL) {
+	    namelen = 12;
+	    if ((tpp = strrchr(path, '\\')) == NULL) {
 #else
-	if ((tpp = strrchr(path, '/')) == NULL) {
-	    namelen = pathconf(".", _PC_NAME_MAX);
+	    if ((tpp = strrchr(path, '/')) == NULL) {
+		namelen = pathconf(".", _PC_NAME_MAX);
 #endif
-	    tpp = path;
-	} else {
+		tpp = path;
+	    } else {
 #ifndef MSDOS
-	    *tpp = '\0';
-	    namelen = pathconf(path, _PC_NAME_MAX);
-	    *tpp = '/';
+		*tpp = '\0';
+		namelen = pathconf(path, _PC_NAME_MAX);
+		*tpp = '/';
 #endif
-	    tpp++;
+		tpp++;
+	    }
+	    strcpy(file, tpp);
+
+	    if (!strcmp(file + strlen(file) - 3, ".sc"))
+		file[strlen(file) - 3] = '\0';
+	    else if (scext != NULL && file[strlen(file) - strlen(scext) - 1] == '.'
+		    && !strcmp(file + strlen(file) - strlen(scext), scext))
+		file[strlen(file) - strlen(scext)] = '\0';
+
+	    if (ascext == NULL)
+		file[namelen - 4] = '\0';
+	    else
+		file[namelen - strlen(ascext) - 1] = '\0';
+	    sprintf(tpp, "%s.%s", file, ascext == NULL ? "asc" : ascext);
+	    fname = path;
 	}
-	strcpy(file, tpp);
 
-	if (!strcmp(file + strlen(file) - 3, ".sc"))
-	    file[strlen(file) - 3] = '\0';
-	else if (scext != NULL && file[strlen(file) - strlen(scext) - 1] == '.'
-		&& !strcmp(file + strlen(file) - strlen(scext), scext))
-	    file[strlen(file) - strlen(scext)] = '\0';
+	if ((strcmp(fname, curfile) == 0) &&
+	    !yn_ask("Confirm that you want to destroy the data base: (y,n)")) {
+	    return;
+	}
 
-	if (ascext == NULL)
-	    file[namelen - 4] = '\0';
-	else
-	    file[namelen - strlen(ascext) - 1] = '\0';
-	sprintf(tpp, "%s.%s", file, ascext == NULL ? "asc" : ascext);
-	fname = path;
-    }
-
-    if ((strcmp(fname, curfile) == 0) &&
-	!yn_ask("Confirm that you want to destroy the data base: (y,n)")) {
-	return;
-    }
+	if ((f = openfile(fname, &pid, NULL)) == (FILE *)0) {
+	    error("Can't create file \"%s\"", fname);
+	    return;
+	}
+    } else
+	f = stdout;
 
     if (!pline && (pline = scxmalloc((unsigned)(FBUFLEN *
 	    ++fbufs_allocated))) == (char *)NULL) {
 	error("Malloc failed in printfile()");
-        return;
-    }
-
-    if ((f = openfile(fname, &pid, NULL)) == (FILE *)0) {
-	error("Can't create file \"%s\"", fname);
 	return;
     }
+
     for (row = r0; row <= rn; row++) {
 	int c = 0;
 
@@ -1501,7 +1986,7 @@ printfile(char *fname, int r0, int c0, int rn, int cn)
 	(void) fputs (pline, f);
     }
 
-    closefile(f, pid, 0);
+    if (fname) closefile(f, pid, 0);
 }
 
 void
@@ -1749,9 +2234,11 @@ unspecial(FILE *f, char *str, int delim)
 }
 
 struct enode *
-copye(register struct enode *e, int Rdelta, int Cdelta)
+copye(register struct enode *e, int Rdelta, int Cdelta, int r1, int c1,
+	int r2, int c2, int transpose)
 {
     register struct enode *ret;
+    static struct enode *range = NULL;
 
     if (e == (struct enode *)0)
 	ret = (struct enode *)0;
@@ -1763,19 +2250,37 @@ copye(register struct enode *e, int Rdelta, int Cdelta)
 	} else
 	    ret = (struct enode *) scxmalloc((unsigned) sizeof (struct enode));
 	ret->op = e->op;
-	newrow=e->e.r.left.vf & FIX_ROW ? e->e.r.left.vp->row :
-					  e->e.r.left.vp->row+Rdelta;
-	newcol=e->e.r.left.vf & FIX_COL ? e->e.r.left.vp->col :
-					  e->e.r.left.vp->col+Cdelta;
+	newrow = e->e.r.left.vf & FIX_ROW ||
+		 e->e.r.left.vp->row < r1 || e->e.r.left.vp->row > r2 ||
+		 e->e.r.left.vp->col < c1 || e->e.r.left.vp->col > c2 ?
+		 e->e.r.left.vp->row :
+		 transpose ? r1 + Rdelta + e->e.r.left.vp->col - c1 :
+		 e->e.r.left.vp->row + Rdelta;
+	newcol = e->e.r.left.vf & FIX_COL ||
+		 e->e.r.left.vp->row < r1 || e->e.r.left.vp->row > r2 ||
+		 e->e.r.left.vp->col < c1 || e->e.r.left.vp->col > c2 ?
+		 e->e.r.left.vp->col :
+		 transpose ? c1 + Cdelta + e->e.r.left.vp->row - r1 :
+		 e->e.r.left.vp->col + Cdelta;
 	ret->e.r.left.vp = lookat(newrow, newcol);
 	ret->e.r.left.vf = e->e.r.left.vf;
-	newrow=e->e.r.right.vf & FIX_ROW ? e->e.r.right.vp->row :
-					   e->e.r.right.vp->row+Rdelta;
-	newcol=e->e.r.right.vf & FIX_COL ? e->e.r.right.vp->col :
-					   e->e.r.right.vp->col+Cdelta;
+	newrow = e->e.r.right.vf & FIX_ROW ||
+		 e->e.r.right.vp->row < r1 || e->e.r.right.vp->row > r2 ||
+		 e->e.r.right.vp->col < c1 || e->e.r.right.vp->col > c2 ?
+		 e->e.r.right.vp->row :
+		 transpose ? r1 + Rdelta + e->e.r.right.vp->col - c1 :
+		 e->e.r.right.vp->row + Rdelta;
+	newcol = e->e.r.right.vf & FIX_COL ||
+		 e->e.r.right.vp->row < r1 || e->e.r.right.vp->row > r2 ||
+		 e->e.r.right.vp->col < c1 || e->e.r.right.vp->col > c2 ?
+		 e->e.r.right.vp->col :
+		 transpose ? c1 + Cdelta + e->e.r.right.vp->row - r1 :
+		 e->e.r.right.vp->col + Cdelta;
 	ret->e.r.right.vp = lookat(newrow, newcol);
 	ret->e.r.right.vf = e->e.r.right.vf;
     } else {
+	struct enode *temprange;
+
 	if (freeenodes) {
 	    ret = freeenodes;
 	    freeenodes = ret->e.o.left;
@@ -1783,13 +2288,46 @@ copye(register struct enode *e, int Rdelta, int Cdelta)
 	    ret = (struct enode *) scxmalloc((unsigned) sizeof (struct enode));
 	ret->op = e->op;
 	switch (ret->op) {
+	    case SUM:
+	    case PROD:
+	    case AVG:
+	    case COUNT:
+	    case STDDEV:
+	    case MAX:
+	    case MIN:
+		temprange = range;
+		range = e->e.o.left;
+		r1 = 0;
+		c1 = 0;
+		r2 = maxrow;
+		c2 = maxcol;
+	}
+	switch (ret->op) {
 	    case 'v':
 		{
 		    int newrow, newcol;
-		    newrow=e->e.v.vf & FIX_ROW ? e->e.v.vp->row :
-						 e->e.v.vp->row+Rdelta;
-		    newcol=e->e.v.vf & FIX_COL ? e->e.v.vp->col :
-						 e->e.v.vp->col+Cdelta;
+		    if (range && e->e.v.vp->row >= range->e.r.left.vp->row &&
+				 e->e.v.vp->row <= range->e.r.right.vp->row &&
+				 e->e.v.vp->col >= range->e.r.left.vp->col &&
+				 e->e.v.vp->col <= range->e.r.right.vp->col) {
+			newrow = range->e.r.left.vf & FIX_ROW ?
+				e->e.v.vp->row : e->e.v.vp->row + Rdelta;
+			newcol = range->e.r.left.vf & FIX_COL ?
+				e->e.v.vp->col : e->e.v.vp->col + Cdelta;
+		    } else {
+			newrow = e->e.v.vf & FIX_ROW ||
+				 e->e.v.vp->row < r1 || e->e.v.vp->row > r2 ||
+				 e->e.v.vp->col < c1 || e->e.v.vp->col > c2 ?
+				 e->e.v.vp->row :
+				 transpose ? r1 + Rdelta + e->e.v.vp->col - c1 :
+				 e->e.v.vp->row + Rdelta;
+			newcol = e->e.v.vf & FIX_COL ||
+				 e->e.v.vp->row < r1 || e->e.v.vp->row > r2 ||
+				 e->e.v.vp->col < c1 || e->e.v.vp->col > c2 ?
+				 e->e.v.vp->col :
+				 transpose ? c1 + Cdelta + e->e.v.vp->row - r1 :
+				 e->e.v.vp->col + Cdelta;
+		    }
 		    ret->e.v.vp = lookat(newrow, newcol);
 		    ret->e.v.vf = e->e.v.vf;
 		    break;
@@ -1798,17 +2336,36 @@ copye(register struct enode *e, int Rdelta, int Cdelta)
 		ret->e.k = e->e.k;
 		break;
 	    case 'f':
-		ret->e.o.right = copye(e->e.o.right,0,0);
-		ret->e.o.left = (struct enode *)0;
+	    case 'F':
+		if (range && ret->op == 'F' ||
+			!range && ret->op == 'f')
+		    Rdelta = Cdelta = 0;
+		ret->e.o.left = copye(e->e.o.left, Rdelta, Cdelta,
+			r1, c1, r2, c2, transpose);
+		ret->e.o.right = (struct enode *)0;
  		break;
 	    case '$':
+	    case EXT:
 		ret->e.s = scxmalloc((unsigned) strlen(e->e.s)+1);
 		(void) strcpy(ret->e.s, e->e.s);
-		break;
+		if (e->op == '$')	/* Drop through if ret->op is EXT */
+		    break;
 	    default:
-		ret->e.o.right = copye(e->e.o.right,Rdelta,Cdelta);
-		ret->e.o.left = copye(e->e.o.left,Rdelta,Cdelta);
+		ret->e.o.left = copye(e->e.o.left, Rdelta, Cdelta,
+			r1, c1, r2, c2, transpose);
+		ret->e.o.right = copye(e->e.o.right, Rdelta, Cdelta,
+			r1, c1, r2, c2, transpose);
 		break;
+	}
+	switch (ret->op) {
+	    case SUM:
+	    case PROD:
+	    case AVG:
+	    case COUNT:
+	    case STDDEV:
+	    case MAX:
+	    case MIN:
+		range = temprange;
 	}
     }
     return ret;
@@ -1830,6 +2387,13 @@ sync_refs()
 	for (j=0; j<=maxcol; j++)
 	    if ((p = *ATBL(tbl, i, j)) && p->expr)
 		syncref(p->expr);
+    for (i = 0; i < DELBUFSIZE; i++) {
+	p = delbuf[i];
+	while (p && p->expr) {
+	    syncref(p->expr);
+	    p = p->next;
+	}
+    }
 }
 
 void
@@ -1843,13 +2407,12 @@ syncref(register struct enode *e)
     } else {
 	switch (e->op) {
 	    case 'v':
-		if (!(e->e.v.vp->flags & is_cleared))
-		    e->e.v.vp = lookat(e->e.v.vp->row, e->e.v.vp->col);
-		else {
+		if (e->e.v.vp->flags & is_cleared) {
 		    e->op = ERR_;
 		    e->e.o.left = NULL;
 		    e->e.o.right = NULL;
-		}
+		} else if (e->e.v.vp->flags & may_sync)
+		    e->e.v.vp = lookat(e->e.v.vp->row, e->e.v.vp->col);
 		break;
 	    case 'k':
 		break;
@@ -2040,6 +2603,7 @@ closefile(FILE *f, int pid, int rfd)
 	    cbreak();
 	    (void) nmgetch();
 	    goraw();
+	    clear();
 	} else {
 	    close(rfd);
 	    if (usecurses) {
@@ -2067,27 +2631,105 @@ closefile(FILE *f, int pid, int rfd)
     }
 }
 
+/* Copy a cell (struct ent).  "special" indicates special treatment when
+ * merging two cells for the "pm" command, merging formats only for the
+ * "pf" command, or for adjusting cell references when transposing with
+ * the "pt" command.  r1, c1, r2, and c2 define the range in which the dr
+ * and dc values should be used.
+ */
 void
-copyent(register struct ent *n, register struct ent *p, int dr, int dc)
+copyent(register struct ent *n, register struct ent *p, int dr, int dc,
+	int r1, int c1, int r2, int c2, int special)
 {
     if (!n || !p) {
 	error("internal error");
 	return;
     }
-    n->v = p->v;
-    n->flags = p->flags;
-    n->expr = copye(p->expr, dr, dc);
-    n->label = (char *)0;
-    if (p->label) {
-	n->label = scxmalloc((unsigned) (strlen(p->label) + 1));
-	(void) strcpy(n->label, p->label);
+    if (special != 'f') {
+	if (special != 'm' || p->flags & is_valid) {
+	    n->v = p->v;
+	    n->flags |= p->flags & is_valid;
+	}
+	if (special != 'm' || p->expr) {
+	    n->expr = copye(p->expr, dr, dc, r1, c1, r2, c2, special == 't');
+	    if (p->flags & is_strexpr)
+		n->flags |= is_strexpr;
+	    else
+		n->flags &= ~is_strexpr;
+	}
+	if (p->label) {
+	    if (n->label)
+		scxfree(n->label);
+	    n->label = scxmalloc((unsigned) (strlen(p->label) + 1));
+	    (void) strcpy(n->label, p->label);
+	    n->flags &= ~is_leftflush;
+	    n->flags |= ((p->flags & is_label) | (p->flags & is_leftflush));
+	} else if (special != 'm') {
+	    n->label = NULL;
+	    n->flags &= ~(is_label | is_leftflush);
+	}
+	n->flags |= p->flags & is_locked;
     }
-    n->format = 0;
     if (p->format) {
+	if (n->format)
+	    scxfree(n->format);
         n->format = scxmalloc((unsigned) (strlen(p->format) + 1));
 	(void) strcpy(n->format, p->format);
-    }
+    } else if (special != 'm' && special != 'f')
+	n->format = NULL;
+    n->flags |= is_changed;
 }
+
+#ifndef MSDOS
+/* add a plugin/mapping pair to the end of the filter list. type is
+ * r(ead) or w(rite)
+ */
+
+void
+addplugin(char *ext, char *plugin, char type)
+{
+    struct impexfilt *fp;
+    char mesg[PATHLEN];
+
+    if (!plugin_exists(plugin, strlen(plugin), mesg)) {
+	error("Cannot find plugin %s", plugin);
+	return;
+    }
+    if (filt == NULL) {
+	filt = (struct impexfilt *) scxmalloc((unsigned)sizeof(struct impexfilt));
+	fp = filt;
+    } else {
+	fp = filt;
+	while (fp->next != NULL)
+	    fp = fp->next;
+	fp->next = (struct impexfilt *)scxmalloc((unsigned)sizeof(struct impexfilt));
+	fp = fp->next;
+    }
+    strcpy(fp->plugin, plugin);
+    strcpy(fp->ext, ext);
+    fp->type = type;
+    fp->next = NULL;
+}
+
+char *
+findplugin(char *ext, char type)
+{
+    struct impexfilt *fp;
+
+    fp = filt;
+    if (fp == NULL)
+	return (NULL);
+    if ((!strcmp(fp->ext, ext)) && (fp->type == type))
+	return (fp->plugin);
+    while (fp->next != NULL) {
+	fp = fp->next;
+	if ((!strcmp(fp->ext, ext)) && (fp->type == type))
+	    return (fp->plugin);
+    }
+
+    return (NULL);
+}
+#endif
 
 void
 write_fd(register FILE *f, int r0, int c0, int rn, int cn)
@@ -2102,12 +2744,12 @@ write_fd(register FILE *f, int r0, int c0, int rn, int cn)
     for (c = 0; c < COLFORMATS; c++)
 	if (colformat[c])
 	    (void) fprintf (f, "format %d = \"%s\"\n", c, colformat[c]);
-    for (c = c0; c < cn; c++)
+    for (c = c0; c <= cn; c++)
 	if (fwidth[c] != DEFWIDTH || precision[c] != DEFPREC ||
 		realfmt[c] != DEFREFMT)
 	    (void) fprintf (f, "format %s %d %d %d\n", coltoa(c), fwidth[c],
 		    precision[c], realfmt[c]);
-    for (c = c0; c < cn; c++)
+    for (c = c0; c <= cn; c++)
         if (col_hidden[c])
             (void) fprintf(f, "hide %s\n", coltoa(c));
     for (r = r0; r <= rn; r++)
@@ -2143,10 +2785,6 @@ write_fd(register FILE *f, int r0, int c0, int rn, int cn)
 		}
 	    }
     }
-    /* xxx
-    if (rndtoeven)
-	fprintf(f, "set rndtoeven\n");
-    */
     /*
      * Don't try to combine these into a single fprintf().  v_name() has
      * a single buffer that is overwritten on each call, so the first part
@@ -2161,6 +2799,7 @@ write_cells(register FILE *f, int r0, int c0, int rn, int cn, int dr, int dc)
 {
     register struct ent **pp;
     int r, c, rs, cs, mf;
+    char *dpointptr;
 
     mf = modflg;
     if (dr != r0 || dc != c0) {
@@ -2178,12 +2817,15 @@ write_cells(register FILE *f, int r0, int c0, int rn, int cn, int dr, int dc)
 	pp = ATBL(tbl, r, dc);
 	for (c = dc; c <= cn; c++, pp++)
 	    if (*pp) {
-		if ((*pp)->label) {
+		if ((*pp)->label || (*pp)->flags & is_strexpr) {
 		    edits(r, c);
 		    (void) fprintf(f, "%s\n", line);
 		}
-		if ((*pp)->flags&is_valid) {
+		if ((*pp)->flags & is_valid) {
 		    editv(r, c);
+		    dpointptr = strchr(line, dpoint);
+		    if (dpointptr != NULL)
+			*dpointptr = '.';
 		    (void) fprintf(f, "%s\n", line);
 		}
 		if ((*pp)->format) {
@@ -2209,7 +2851,31 @@ writefile(char *fname, int r0, int c0, int rn, int cn)
     char tfname[PATHLEN];
     long namelen;
     char *tpp;
+    char *p;
+    char *plugin;
     int pid;
+
+#ifndef MSDOS
+    /* find the extension and mapped plugin if exists */
+    if ((p = strrchr(fname, '.'))) {
+	if ((plugin = findplugin(p+1, 'w')) != NULL) {
+	    if (!plugin_exists(plugin, strlen(plugin), save + 1)) {
+		error("plugin not found");
+		return;
+	    }
+	    *save = '|';
+	    if ((strlen(save) + strlen(fname) + 20) > PATHLEN) {
+		error("Path too long");
+		return;
+	    }
+	    sprintf(save + strlen(save), " %s%d:", coltoa(c0), r0);
+	    sprintf(save + strlen(save), "%s%d \"%s\"", coltoa(cn), rn, fname);
+	    /* pass it to readfile as an advanced macro */
+	    readfile(save, 0);
+	    return (0);
+	}
+    }
+#endif
 
 #if !defined(VMS) && !defined(MSDOS) && defined(CRYPT_PATH)
     if (Crypt) {
@@ -2277,18 +2943,24 @@ writefile(char *fname, int r0, int c0, int rn, int cn)
     if (!pid) {
         (void) strcpy(curfile, save);
         modflg = 0;
-        error("File \"%s\" written.", curfile);
+	FullUpdate++;
+	if (usecurses)
+	    error("File \"%s\" written", curfile);
+	else
+	    fprintf(stderr, "\nFile \"%s\" written", curfile);
     }
 
     return (0);
 }
 
-void
+int
 readfile(char *fname, int eraseflg)
 {
     register FILE *f;
     char save[PATHLEN];
     int tempautolabel;
+    char *p;
+    char *plugin;
     int pid = 0;
     int rfd = STDOUT_FILENO, savefd;
 
@@ -2304,21 +2976,51 @@ readfile(char *fname, int eraseflg)
 	(void) strcpy(save, fname);
     }
 
+#ifndef MSDOS
+    if ((p = strrchr(fname, '.')) && (fname[0] != '|')) {  /* exclude macros */
+	if ((plugin = findplugin(p+1, 'r')) != NULL) {
+	    if (!(plugin_exists(plugin, strlen(plugin), save + 1))) {
+		error("plugin not found");
+		return;
+	    }
+	    *save = '|';
+	    if ((strlen(save) + strlen(fname) + 2) > PATHLEN) {
+		error("Path too long");
+		return;
+	    }
+	    sprintf(save + strlen(save), " \"%s\"", fname);
+	    eraseflg = 0;
+	    /* get filename: could be preceded by params if this is
+	    * a save
+	    */
+	    while (p > fname) {
+		if (*p == ' ') {
+		    p++;
+		    break;
+		}
+		p--;
+	    }
+	    (void) strcpy(curfile, p);
+	}
+    }
+#endif
+
 #if !defined(VMS) && !defined(MSDOS) && defined(CRYPT_PATH)
     if (Crypt) {
+	int ret = 0;
 	if (*save == '-' && strlen(fname) == 1)
 	    error("Can't use encryption in a pipeline.");
 	else
 	    if (*save == '|')
 		error("Can't use encryption with advanced macros.");
 	else
-	    creadfile(save, eraseflg);
+	    ret = creadfile(save, eraseflg);
 	autolabel = tempautolabel;
-	return;
+	return (ret);
     }
 #endif /* VMS */
 
-    if (eraseflg && strcmp(fname, curfile) && modcheck(" first")) return;
+    if (eraseflg && strcmp(fname, curfile) && modcheck(" first")) return 0;
 
 #ifndef MSDOS
     if (fname[0] == '-' && fname[1] == '\0') {
@@ -2329,12 +3031,13 @@ readfile(char *fname, int eraseflg)
 	if ((f = openfile(save, &pid, &rfd)) == NULL) {
 	    error("Can't read file \"%s\"", save);
 	    autolabel = tempautolabel;
-	    return;
+	    return 0;
 	} else if (eraseflg) {
 	    if (usecurses) {
 		error("Reading file \"%s\"", save);
 		refresh();
-	    }
+	    } else
+		fprintf(stderr, "\nReading file \"%s\"", save);
 	}
 #ifndef MSDOS
     }
@@ -2344,6 +3047,7 @@ readfile(char *fname, int eraseflg)
 
     if (eraseflg) erasedb();
 
+    remember(0);
     loading++;
     savefd = macrofd;
     macrofd = rfd;
@@ -2358,6 +3062,7 @@ readfile(char *fname, int eraseflg)
     }
     macrofd = savefd;
     --loading;
+    remember(1);
     closefile(f, pid, rfd);
 #ifndef MSDOS
     if (f == stdin) {
@@ -2370,10 +3075,13 @@ readfile(char *fname, int eraseflg)
 	(void) strcpy(curfile, save);
 	modflg = 0;
 	cellassign = 0;
-	if (autorun) readfile(autorun, 0);
+	if (autorun && !skipautorun) (void) readfile(autorun, 0);
+	skipautorun = 0;
 	EvalAll();
     }
     autolabel = tempautolabel;
+    FullUpdate++;
+    return 1;
 }
 
 /* erase the database (tbl, etc.) */
@@ -2400,8 +3108,12 @@ erasedb()
 		*pp = (struct ent *)0;
 	    }
     }
-    for (dbidx = 3; dbidx >= 0; )
-	delbuf[dbidx--] = NULL;
+
+    for (c = 0; c < COLFORMATS; c++)
+	if (colformat[c]) {
+	    scxfree(colformat[c]);
+	    colformat[c] = NULL;
+	}
 
     maxrow = 0;
     maxcol = 0;
@@ -2415,21 +3127,16 @@ erasedb()
     tbl_style = 0;
     craction = 0;
     rowlimit = collimit = -1;
+    qbuf = 0;
 
     autocalc=showcell=showtop=1;
-    autoinsert=optimize=numeric=extfunc=color=colorneg=colorerr=cslop=0;
+    autoinsert=autowrap=optimize=numeric=extfunc=color=colorneg=colorerr=cslop=0;
     currow=curcol=strow=stcol=0;
     if (usecurses && has_colors())
 	color_set(0, NULL);
     /* unset all marks */
-    for (c = 1; c < 27; c++)
+    for (c = 1; c < 37; c++)
 	savedrow[c] = savedcol[c] = savedstrow[c] = savedstcol[c] = -1;
-
-    /* set location to return to with `` or '' */
-    savedrow[0] = currow;
-    savedcol[0] = curcol;
-    savedstrow[0] = strow;
-    savedstcol[0] = stcol;
 
     if (mdir) {
 	scxfree(mdir);
@@ -2454,7 +3161,7 @@ erasedb()
 	strcat(curfile, "/.scrc");
 	if ((c = open(curfile, O_RDONLY)) > -1) {
 	    close(c);
-	    readfile(curfile, 0);
+	    (void) readfile(curfile, 0);
 	}
     }
 
@@ -2464,7 +3171,7 @@ erasedb()
     if (scrc && strcmp(home, getcwd(curfile, PATHLEN)) &&
 	    (c = open(".scrc", O_RDONLY)) > -1) {
 	close(c);
-	readfile(".scrc", 0);
+	(void) readfile(".scrc", 0);
     }
 #endif /* MSDOS */
 
@@ -2553,7 +3260,7 @@ markcell()
 	return;
     }
     if ((c -= ('a' - 1)) < 1 || c > 26) {
-	error("Invalid character for mark (must be a-z)");
+	error("Invalid mark (must be a-z)");
 	return;
     }
     error("");
@@ -2568,24 +3275,19 @@ dotick(int tick)
 {
     int c;
 
-    /* Remember the current position */
-    int tmprow = currow;
-    int tmpcol = curcol;
-    int tmpstrow = strow;
-    int tmpstcol = stcol;
+    remember(0);
 
     error("Go to marked cell:");
     if ((c = nmgetch()) == ESC || c == ctl('g')) {
 	error("");
 	return;
     }
-    if ((c -= ('a' - 1)) < 1 || c > 26) {
-	if (tick == '`' || tick == '\'')
-	    c = 0;
-	else {
-	    error("Invalid character for mark (must be a-z, ` or \')");
-	    return;
-	}
+    if (c == '`' || c == '\'')
+	c = 0;
+    else if (!(((c -= ('a' - 1)) > 0 && c < 27) ||
+	    ((c += ('a' - '0' + 26)) > 26 && c < 37))) {
+	error("Invalid mark (must be a-z, 0-9, ` or \')");
+	return;
     }
     if (savedrow[c] == -1) {
 	error("Mark not set");
@@ -2596,16 +3298,13 @@ dotick(int tick)
     curcol = savedcol[c];
     rowsinrange = 1;
     colsinrange = fwidth[curcol];
-    if (tick == '`') {
+    if (tick == '\'') {
 	strow = savedstrow[c];
 	stcol = savedstcol[c];
 	gs.stflag = 1;
     } else
 	gs.stflag = 0;
-    savedrow[0] = tmprow;
-    savedcol[0] = tmpcol;
-    savedstrow[0] = tmpstrow;
-    savedstcol[0] = tmpstcol;
+    remember(1);
 
     FullUpdate++;
 }
@@ -2646,7 +3345,7 @@ showstring(char *string,	/* to display */
     char field[FBUFLEN];
     int  slen;
     char *start, *last;
-    register char *fp;
+    char *fp, *sp;
     struct ent *nc;
     struct crange *cr;
 
@@ -2656,7 +3355,10 @@ showstring(char *string,	/* to display */
        slop over into the next blank field */
 
     slen = strlen(string);
-    if (*string == '\\' && *(string+1) != '\0')
+    for (sp = string; *sp != '\0'; sp++)
+	if (*sp == '\\' && *(sp + 1) == '"')
+	    slen--;
+    if (*string == '\\' && *(string+1) != '\0' && *(string+1) != '"')
 	slen = fwidth[col];
     if (c + fieldlen == rescol + flcols && nextcol < stcol)
 	nextcol = stcol;
@@ -2690,24 +3392,35 @@ showstring(char *string,	/* to display */
     if (slen)
 	while (fp < start)
 	    *fp++ = ' ';
-    if (*string == '\\' && *(string+1) != '\0') {
+    if (*string == '\\' && *(string+1) != '\0' && *(string+1) != '"') {
 	char *strt;
 	strt = ++string;
 
 	while (slen--) {
-	    *fp++ = *string++;
+	    if (*string == '\\' && *(string + 1) == '"') {
+		slen++;
+		string++;
+	    } else
+		*fp++ = *string++;
 	    if (*string == '\0')
 		string = strt;
 	}
-    }
-    else
-    while (slen--)
-	*fp++ = *string++;
+    } else
+	while (slen--) {
+	    if (*string == '\\' && *(string + 1) == '"') {
+		slen++;
+		string++;
+	    } else
+		*fp++ = *string++;
+	}
 
     if ((!hasvalue) || fieldlen != fwidth[col]) 
 	while (fp < last)
 	    *fp++ = ' ';
     *fp = '\0';
+    for (fp = field; *fp != '\0'; fp++)
+	if (*fp == '\\' && *(fp + 1) == '"')
+	    memmove(fp, fp + 1, strlen(fp));
 #ifdef VMS
     mvaddstr(r, c, field);	/* this is a macro */
 #else
@@ -2820,72 +3533,79 @@ findhome(char *path)
 
 /*
  * make a backup copy of a file, use the same mode and name in the format
- * [path/]#file~
+ * [path/]file~
  * return 1 if we were successful, 0 otherwise
  */
 int
 backup_file(char *path)
 {
-	struct	stat	statbuf;
-	char	fname[PATHLEN];
-	char	tpath[PATHLEN];
+    struct	stat	statbuf;
+    struct	utimbuf	timebuf;
+    char	fname[PATHLEN];
+    char	tpath[PATHLEN];
 #ifdef sequent
-	static	char	*buf = NULL;
-	static	unsigned buflen = 0;
+    static	char	*buf = NULL;
+    static	unsigned buflen = 0;
 #else
-	char	buf[BUFSIZ];
+    char	buf[BUFSIZ];
 #endif
-	char	*tpp;
-	int	infd, outfd;
-	int	count;
+    char	*tpp;
+    int		infd, outfd;
+    int		count;
+    mode_t	oldumask;
 
-	/* tpath will be the [path/]file ---> [path/]#file~ */
-	strcpy(tpath, path);
-	if ((tpp = strrchr(tpath, '/')) == NULL)
-		tpp = tpath;
-	else
-		tpp++;
-	strcpy(fname, tpp);
-	(void) sprintf(tpp, "#%s~", fname);
+    /* tpath will be the [path/]file ---> [path/]file~ */
+    strcpy(tpath, path);
+    if ((tpp = strrchr(tpath, '/')) == NULL)
+	tpp = tpath;
+    else
+	tpp++;
+    strcpy(fname, tpp);
+    (void) sprintf(tpp, "%s~", fname);
 
-	if (stat(path, &statbuf) == 0)
-	{
-		/* if we know the optimum block size, use it */
+    if (stat(path, &statbuf) == 0) {
 #ifdef sequent
-		if ((statbuf.st_blksize > buflen) || (buf == NULL))
-		{	buflen = statbuf.st_blksize;
-			if ((buf = scxrealloc(buf, buflen)) == (char *)0)
-			{	buflen = 0;
-				return(0);
-			}
-		}
-#endif
-
-		if ((infd = open(path, O_RDONLY, 0)) < 0)
-			return (0);
-
-		if ((outfd = open(tpath, O_TRUNC|O_WRONLY|O_CREAT,
-					statbuf.st_mode)) < 0)
-			return (0);
-
-#ifdef sequent
-		while ((count = read(infd, buf, statbuf.st_blksize)) > 0)
-#else
-		while ((count = read(infd, buf, sizeof(buf))) > 0)
-#endif
-		{	if (write(outfd, buf, count) != count)
-			{	count = -1;
-				break;
-			}
-		}
-		close(infd);
-		close(outfd);
-
-		return ((count < 0) ? 0 : 1);
+	/* if we know the optimum block size, use it */
+	if ((statbuf.st_blksize > buflen) || (buf == NULL)) {
+	    buflen = statbuf.st_blksize;
+	    if ((buf = scxrealloc(buf, buflen)) == (char *)0) {
+		buflen = 0;
+		return (0);
+	    }
 	}
-	else
-	if (errno == ENOENT)
-		return (1);
-	return (0);
+#endif
+
+	if ((infd = open(path, O_RDONLY, 0)) < 0)
+		return (0);
+
+	oldumask = umask(0);
+	outfd = open(tpath, O_TRUNC|O_WRONLY|O_CREAT, statbuf.st_mode);
+	umask(oldumask);
+	if (outfd < 0)
+	    return (0);
+	chown(tpath, statbuf.st_uid, statbuf.st_gid);
+
+#ifdef sequent
+	while ((count = read(infd, buf, statbuf.st_blksize)) > 0) {
+#else
+	while ((count = read(infd, buf, sizeof(buf))) > 0) {
+#endif
+	    if (write(outfd, buf, count) != count) {
+		count = -1;
+		break;
+	    }
+	}
+	close(infd);
+	close(outfd);
+
+	/* copy access and modification times from original file */
+	timebuf.actime = statbuf.st_atime;
+	timebuf.modtime = statbuf.st_mtime;
+	utime(tpath, &timebuf);
+
+	return ((count < 0) ? 0 : 1);
+    } else if (errno == ENOENT)
+	return (1);
+    return (0);
 }
 #endif

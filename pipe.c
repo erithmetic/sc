@@ -1,10 +1,10 @@
 /*	SC	A Spreadsheet Calculator
  *		Routines for piping data to and from an external macro program
  *
- *		Chuck Martin <cmartin@bigfoot.com>
+ *		Chuck Martin <nrocinu@myrealbox.com>
  *		Original Version Created:  June, 2000
  *
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  */
 
 #include <curses.h>
@@ -208,6 +208,49 @@ getframe(int fd)
 }
 
 void
+getrange(char *name, int fd)
+{
+    struct range *r;
+    char *p;
+
+    *line = '\0';
+    if (!find_range(name, strlen(name), (struct ent *)0, (struct ent *)0, &r)) {
+	sprintf(line, "%s%s%s%d",
+		r->r_left.vf & FIX_COL ? "$" : "",
+		coltoa(r->r_left.vp->col),
+		r->r_left.vf & FIX_ROW ? "$" : "",
+		r->r_left.vp->row);
+	if (r->r_is_range) {
+	    p = line;
+	    while (*p)
+		p++;
+	    sprintf(p, ":%s%s%s%d",
+		    r->r_right.vf & FIX_COL ? "$" : "",
+		    coltoa(r->r_right.vp->col),
+		    r->r_right.vf & FIX_ROW ? "$" : "",
+		    r->r_right.vp->row);
+	}
+	/************************************************/
+	/*                                              */
+	/* if(r->r_is_range)                            */
+	/*         sprintf(line,"%d:%d:%d:%d",          */
+	/*                         r->r_left.vp->col,   */
+	/*                         r->r_left.vp->row,   */
+	/*                         r->r_right.vp->col,  */
+	/*                         r->r_right.vp->row); */
+	/* else                                         */
+	/*         sprintf(line,"%d:%d",                */
+	/*                         r->r_left.vp->col,   */
+	/*                         r->r_left.vp->row);  */
+	/*                                              */
+	/************************************************/
+    }
+    strcat(line, "\n");
+    write(fd, line, strlen(line));
+    linelim = -1;
+}
+
+void
 doeval(struct enode *e, char *fmt, int row, int col, int fd)
 {
     double v;
@@ -241,21 +284,27 @@ doseval(struct enode *e, int row, int col, int fd)
     gmycol = col;
 
     s = seval(e);
-    write(fd, s, strlen(s));
+    if (s)
+	write(fd, s, strlen(s));
     write(fd, "\n", 1);
     linelim = -1;
 
     efree(e);
-    scxfree(s);
+    if (s)
+	scxfree(s);
 }
 
 
 void
 doquery(char *s, char *data, int fd)
 {
+    goraw();
     query(s, data);
-    if (linelim >= 0)
+    deraw(0);
+    if (linelim >= 0) {
 	write(fd, line, strlen(line));
+	write(fd, "\n", 1);
+    }
 
     line[0] = '\0';
     linelim = -1;
@@ -263,6 +312,39 @@ doquery(char *s, char *data, int fd)
     update(0);
 
     if (s) scxfree(s);
+}
+
+void
+dogetkey()
+{
+    int c, len;
+
+    goraw();
+    c = nmgetch();
+    deraw(0);
+
+    if (c < 256) {
+	sprintf(line, "%c", c);
+	len = 1;
+    } else if (c >= KEY_MIN && c <= KEY_MAX) {
+	int i, j;
+	line[0] = '\0';
+	sprintf(line + 1, "%s\n", keyname(c));
+	for (i = 1, j = 5; line[j-1]; ) {
+	    if (line[j] == '(' || line[j] == ')')
+		j++;
+	    else
+		line[i++] = line[j++];
+	}
+	len = strlen(line + 1) + 1;
+    } else {
+	line[0] = '0';
+	sprintf(line + 1, "UNKNOWN KEY");
+	len = strlen(line + 1) + 1;
+    }
+
+
+    write(macrofd, line, len);
 }
 
 void

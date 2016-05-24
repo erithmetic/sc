@@ -21,3 +21,9 @@ todo:
 9) add uemacs macro language
 10) add uemacs command completion
 11) add undo
+12) rewrite update() function in screen.c from scratch in a more sane manner
+	(the current one is buggy and a headache to debug)
+13) add a command line option (possibly -g) to use sc as a sort of grep for
+	formatted or unformatted data in a file or list of files which will
+	output the whole row in which a given number or string is found,
+	formatted as with the write command.

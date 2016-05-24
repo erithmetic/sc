@@ -7,7 +7,7 @@
  *
  *              More mods Robert Bond, 12/86
  *		More mods by Alan Silverstein, 3-4/88, see list of changes.
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  *
  */
 
@@ -33,13 +33,11 @@ extern int VMS_read_raw;   /*sigh*/
 #define nonl()	 (_tty.sg_flags &= ~CRMOD, _pfast = TRUE, stty(_tty_ch, &_tty))
 #endif
 
-#define SHOWROWS 2
-#define SHOWCOLS 3
-
 void	repaint(int x, int y, int len, int attron, int attroff);
 
 char	under_cursor = ' '; /* Data under the < cursor */
 char	mode_ind = 'i';
+char	search_ind = ' ';
 extern	char    revmsg[];
 
 int	lines, cols;
@@ -89,6 +87,7 @@ update(int anychanged)		/* did any cell really change in value? */
     struct crange		*cr;
     int				ftoprows, fbottomrows, fleftcols, frightcols;
     int				ftrows, fbrows, flcols, frcols;
+    bool			message;
 
 #ifndef MSDOS
     /*
@@ -608,15 +607,19 @@ update(int anychanged)		/* did any cell really change in value? */
 		continue;
 	    (void) move(2, col);
 	    k = (fwidth[i] - strlen(coltoa(i)))/2;
-	    if (k == 0)
-		(void) printw("%1s", coltoa(i));
+	    if (fwidth[i] == 1)
+		(void) printw("%1s", coltoa(i%26));
+	    else if (braille)
+	        (void) printw("%-*s", fwidth[i], coltoa(i));
 	    else
-	        (void) printw("%*s%-*s", k, " ", fwidth[i]-k, coltoa(i));
+	        (void) printw("%*s%-*s", k, "", fwidth[i]-k, coltoa(i));
 	    col += fwidth[i];
 	}
 	(void) standend();
     }
 
+    (void) move(1, 0);
+    message = (inch() & A_CHARTEXT) != ' ';
     if (showrange) {
 	if (showrange == SHOWROWS) {
 	    minsr = showsr < currow ? showsr : currow;
@@ -624,8 +627,7 @@ update(int anychanged)		/* did any cell really change in value? */
 	    maxsr = showsr > currow ? showsr : currow;
 	    maxsc = fr ? fr->or_right->col : maxcols;
 
-	    if (showtop) {
-		(void) move(1,0);
+	    if (showtop && !message) {
 		(void) clrtoeol();
 		(void) printw("Default range:  %d:%d", minsr, maxsr);
 	    }
@@ -635,13 +637,12 @@ update(int anychanged)		/* did any cell really change in value? */
 	    maxsr = maxrows;
 	    maxsc = showsc > curcol ? showsc : curcol;
 
-	    if (showtop) {
+	    if (showtop && !message) {
 		char r[6];
 
 		strcpy(r, coltoa(minsc));
 		strcat(r, ":");
 		strcat(r, coltoa(maxsc));
-		(void) move(1,0);
 		(void) clrtoeol();
 		(void) printw("Default range:  %s", r);
 	    }
@@ -651,15 +652,16 @@ update(int anychanged)		/* did any cell really change in value? */
 	    maxsr = showsr > currow ? showsr : currow;
 	    maxsc = showsc > curcol ? showsc : curcol;
 
-	    if (showtop) {
-		(void) move(1,0);
+	    if (showtop && !message) {
 		(void) clrtoeol();
 		(void) printw("Default range:  %s",
 			    r_name(minsr, minsc, maxsr, maxsc));
 	    }
 	}
+    } else if (braille && braillealt && !message && mode_ind == 'v') {
+	(void) clrtoeol();
+	(void) printw("Current cell:   %s%d ", coltoa(curcol), currow);
     }
-
 
     /* Repaint the visible screen */
     if (showrange || anychanged || FullUpdate || standlast) {
@@ -781,6 +783,7 @@ update(int anychanged)		/* did any cell really change in value? */
 			char *cfmt;
 			int note;
 
+			*field = '\0';
 			note = (*pp)->nrow >= 0 ? 1 : 0;
 			cfmt = (*pp)->format ? (*pp)->format :
 			    (realfmt[col] >= 0 && realfmt[col] < COLFORMATS &&
@@ -802,8 +805,8 @@ update(int anychanged)		/* did any cell really change in value? */
 					field, sizeof(field));
 			} else {
 			    (void) engformat(realfmt[col], fwidth[col] - note,
-				precision[col], (*pp)->v, 
-				field, sizeof(field));
+				    precision[col], (*pp)->v, 
+				    field, sizeof(field));
 			}
 			if (strlen(field) > fwidth[col]) {
 			    for (i = 0; i < fwidth[col]; i++) {
@@ -866,8 +869,8 @@ update(int anychanged)		/* did any cell really change in value? */
 			(void) printw("%*s", fwidth[col], " ");
 		    }
 		} /* else */
-	    }
-	    else if (!*pp && color && has_colors && cr && cr->r_color != 1) {
+	    } else
+	    if (!*pp && color && has_colors && cr && cr->r_color != 1) {
 		move(r, c);
 		color_set(cr->r_color, NULL);
 		printw("%*s", fwidth[col], " ");
@@ -925,9 +928,17 @@ update(int anychanged)		/* did any cell really change in value? */
 	    if ((unsigned char) line[i] < ' ')
 		ctlchars++;
 	(void) addch(mode_ind);
-	(void) addstr("> ");
+	(void) addch('>');
+	(void) addch(search_ind);
 	(void) addstr(line);
-	(void) move((linelim+3+ctlchars)/cols, (linelim+3+ctlchars)%cols);
+	if (!braille || (!message && mode_ind != 'v'))
+	    (void) move((linelim+3+ctlchars)/cols, (linelim+3+ctlchars)%cols);
+	else if (message)
+	    move(1, 0);
+	else if (braillealt)
+	    move(1, 16);
+	else
+	    move(lastmy, lastmx);
     } else {
 	if (showtop) {			/* show top line */
 	    register struct ent *p1;
@@ -985,7 +996,7 @@ update(int anychanged)		/* did any cell really change in value? */
 		if (p1->flags & is_valid) {
 		    /* has value or num expr */
 		    if ((!(p1->expr)) || (p1->flags & is_strexpr))
-			(void) sprintf (line, "%.15g", p1->v);
+			(void) sprintf(line, "%.15g", p1->v);
 
 		    (void) addch('[');
 		    (void) addstr(line);
@@ -1000,7 +1011,14 @@ update(int anychanged)		/* did any cell really change in value? */
 	    if (p1 && p1->flags&is_locked)
 		(void) addstr(" locked");
 	}
-	if (showcell)
+	if (braille)
+	    if (message)
+		move(1, 0);
+	    else if (braillealt)
+		move(0, 0);
+	    else
+		move(lastmy, lastmx);
+	else if (showcell)
 	    move(lines - 1, cols - 1);
 	else
 	    (void) move(lastmy, lastmx+fwidth[lastcol]);
@@ -1014,7 +1032,33 @@ update(int anychanged)		/* did any cell really change in value? */
 	(void) clrtoeol();	/* get rid of topline display */
 	(void) printw(revmsg);
 	*revmsg = '\0';		/* don't show it again */
-	if (showcell)
+	if (braille)
+	    if (message)
+		move(1, 0);
+	    else if (braillealt)
+		move(0, 0);
+	    else
+		move(lastmy, lastmx);
+	else if (showcell)
+	    move(lines - 1, cols - 1);
+	else
+	    (void) move(lastmy, lastmx+fwidth[lastcol]);
+    }
+
+    if (color && has_colors())
+	color_set(1, NULL);
+
+    if (revmsg[0]) {
+	(void) move(0, 0);
+	(void) clrtoeol();	/* get rid of topline display */
+	(void) printw(revmsg);
+	*revmsg = '\0';		/* don't show it again */
+	if (braille)
+	    if (message)
+		move(1, 0);
+	    else
+		move(lastmy, lastmx);
+	else if (showcell)
 	    move(lines - 1, cols - 1);
 	else
 	    (void) move(lastmy, lastmx + fwidth[lastcol]);
@@ -1043,7 +1087,7 @@ yyerror(char *err)
     if (usecurses) {
 	if (seenerr) return;
 	seenerr++;
-	(void) move(1,0);
+	(void) move(1, 0);
 	(void) clrtoeol();
 	(void) printw("%s: %.*s<=%s", err, linelim, line, line + linelim);
     } else
@@ -1193,7 +1237,6 @@ goraw()
 	kbd_again();
 	if (color && has_colors())
 	    bkgdset(COLOR_PAIR(1) | ' ');
-	(void) clear();
 	FullUpdate++;
     }
 }

@@ -4,7 +4,7 @@
  *
  *              Robert Bond, 4/87
  *
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  */
 
 #include <sys/types.h>
@@ -58,14 +58,14 @@ add_range(char *name, struct ent_ptr left, struct ent_ptr right, int is_range)
 
     if (!find_range(name, strlen(name), (struct ent *)0, (struct ent *)0,
 	    &prev)) {
-	error("Error: range name already defined");
+	error("Error: range name \"%s\" already defined", name);
 	scxfree(name);
 	return;
     }
 
     for (p = name; *p; p++)
 	if (!(isalpha(*p) || isdigit(*p) || *p == '_')) {
-	    error("Invalid range name - illegal combination");
+	    error("Invalid range name \"%s\" - illegal combination", name);
 	    scxfree(name);
 	    return;
 	}
@@ -73,11 +73,18 @@ add_range(char *name, struct ent_ptr left, struct ent_ptr right, int is_range)
     p = name;
     if (isdigit(*p) || (isalpha(*p++) && (isdigit(*p) ||
 		(isalpha(*p++) && isdigit(*p))))) {
-	p++;
-	while (isdigit(*p))
-	    p++;
+	if (*name == '0' && (name[1] == 'x' || name[1] == 'X')) {
+	    ++p;
+	    while (isxdigit(*++p)) /* */;
+	    if (*p == 'p' || *p == 'P')
+		while (isxdigit(*++p)) /* */;
+	} else {
+	    while (isdigit(*++p)) /* */;
+	    if (isdigit(*name) && (*p == 'e' || *p == 'E'))
+		while (isdigit(*++p)) /* */;
+	}
 	if (!(*p)) {
-	    error("Invalid range name - ambiguous");
+	    error("Invalid range name \"%s\" - ambiguous", name);
 	    scxfree(name);
 	    return;
 	}
@@ -163,6 +170,12 @@ find_range(char *name, int len, struct ent *lmatch, struct ent *rmatch,
 {
     struct range *r;
     int cmp;
+    int exact = TRUE;
+    
+    if (len < 0) {
+	exact = FALSE;
+	len = -len;
+    }
 
     if (name) {
 	for (r = rng_base; r; r = r->r_next) {
@@ -170,7 +183,8 @@ find_range(char *name, int len, struct ent *lmatch, struct ent *rmatch,
 		return (cmp);
 	    *rng = r;
 	    if (cmp == 0)
-		return (cmp);
+		if (!exact || strlen(r->r_name) == len)
+		    return (cmp);
 	}
 	return (-1);
     }

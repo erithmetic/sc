@@ -7,7 +7,7 @@
  *
  *              More mods Robert Bond, 12/86
  *		More mods by Alan Silverstein, 3-4/88, see list of changes.
- *		$Revision: 7.13 $
+ *		$Revision: 7.16 $
  *
  */
 
@@ -16,7 +16,6 @@
 #include <signal.h>
 #include <curses.h>
 #include <ctype.h>
-#include <getopt.h>
 
 #ifdef BSD42
 #include <strings.h>
@@ -41,20 +40,14 @@
 #define	SAVENAME "SC.SAVE" /* file name to use for emergency saves */
 #endif /* SAVENAME */
 
-#ifndef DFLT_PAGER
-#define	DFLT_PAGER "more"	/* more is probably more widespread than less */
-#endif /* DFLT_PAGER */
-
-#define MAXCMD 160	/* for ! command below */
-
 /* Globals defined in sc.h */
 
 struct ent ***tbl;
 int arg = 1;
 int strow = 0, stcol = 0;
 int currow = 0, curcol = 0;
-int savedrow[27], savedcol[27];
-int savedstrow[27], savedstcol[27];
+int savedrow[37], savedcol[37];
+int savedstrow[37], savedstcol[37];
 int FullUpdate = 0;
 int maxrow, maxcol;
 int maxrows, maxcols;
@@ -65,13 +58,16 @@ char *col_hidden;
 char *row_hidden;
 char line[FBUFLEN];
 int changed;
-struct ent *delbuf[4];
+struct ent *delbuf[DELBUFSIZE];
+char *delbuffmt[DELBUFSIZE];
 int dbidx;
+int qbuf;	/* buffer no. specified by " command */
 int modflg;
 int cellassign;
 int numeric;
 char *mdir;
 char *autorun;
+int skipautorun;
 char *fkey[FKEYS];
 char *scext;
 char *ascext;
@@ -88,11 +84,21 @@ int brokenpipe = FALSE;	/* Set to true if SIGPIPE is received */
 int	wasforw	= FALSE;
 #endif
 
-void	update();
-void	repaint();
+void		update();
+void		repaint();
+extern void	doshell();
+extern void	gohome();
+extern void	leftlimit();
+extern void	rightlimit();
+extern void	gototop();
+extern void	gotobottom();
 
-char curfile[PATHLEN];
+char    curfile[PATHLEN];
 char    revmsg[80];
+
+/* numeric separators, country-dependent if locale support enabled: */
+char	dpoint = '.';	/* decimal point */
+char	thsep = ',';	/* thousands separator */
 
 int  linelim = -1;
 
@@ -103,12 +109,18 @@ int  showneed  = 0;	/* Causes cells needing values to be highlighted  */
 int  showexpr  = 0;	/* Causes cell exprs to be displayed, highlighted */
 int  shownote  = 0;	/* Causes cells with attached notes to be
 			   highlighted					  */
+int  braille   = 0;	/* Be nice to users of braille displays		  */
+int  braillealt = 0;	/* Alternate mode for braille users		  */
 
 int  autocalc  = 1;	/* 1 to calculate after each update */
 int  autolabel = 1;     /* If room, causes label to be created after a define */
 int  autoinsert = 0;    /* Causes rows to be inserted if craction is non-zero
 			   and the last cell in a row/column of the scrolling
 			   portion of a framed range has been filled	  */
+int  autowrap = 0;      /* Causes cursor to move to next row/column if craction
+			   is non-zero and the last cell in a row/column of
+			   the scrolling portion of a framed range has been
+			   filled */
 int  calc_order = BYROWS;
 int  optimize  = 0;	/* Causes numeric expressions to be optimized */
 int  tbl_style = 0;	/* headers for T command output */
@@ -150,21 +162,22 @@ lookat(int row, int col)
 
     checkbounds(&row, &col);
     pp = ATBL(tbl, row, col);
-    if (*pp == (struct ent *)0) {
+    if (*pp == NULL) {
         if (freeents != NULL) {
 	    *pp = freeents;
-	    (*pp)->flags &= ~(is_cleared);
+	    (*pp)->flags &= ~is_cleared;
+	    (*pp)->flags |= may_sync;
 	    freeents = freeents->next;
 	} else
 	    *pp = (struct ent *) scxmalloc((unsigned)sizeof(struct ent));
-	if (row>maxrow) maxrow = row;
-	if (col>maxcol) maxcol = col;
+	if (row > maxrow) maxrow = row;
+	if (col > maxcol) maxcol = col;
 	(*pp)->label = (char *)0;
 	(*pp)->row = row;
 	(*pp)->col = col;
 	(*pp)->nrow = -1;
 	(*pp)->ncol = -1;
-	(*pp)->flags = 0;
+	(*pp)->flags = may_sync;
 	(*pp)->expr = (struct enode *)0;
 	(*pp)->v = (double) 0.0;
 	(*pp)->format = (char *)0;
@@ -181,12 +194,13 @@ lookat(int row, int col)
  * We also use it as a last-deleted buffer for the 'p' command.
  */
 void
-free_ent(register struct ent *p)
+free_ent(register struct ent *p, int unlock)
 {
     p->next = delbuf[dbidx];
     delbuf[dbidx] = p;
     p->flags |= is_deleted;
-    p->flags &= ~is_locked;
+    if (unlock)
+	p->flags &= ~is_locked;
 }
 
 /* free deleted cells */
@@ -198,7 +212,10 @@ flush_saved()
 
     if (dbidx < 0)
 	return;
-    (p = delbuf[dbidx]);
+    if (p = delbuf[dbidx]) {
+	scxfree(delbuffmt[dbidx]);
+	delbuffmt[dbidx] = NULL;
+    }
     while (p) {
 	(void) clearent(p);
 	q = p->next;
@@ -231,14 +248,16 @@ main (int argc, char  **argv)
      * command line overrides file options
      */
 
-    int Mopt = 0;
-    int Oopt = 0;
-    int Nopt = 0;
+    int mopt = 0;
+    int oopt = 0;
+    int nopt = 0;
+    int copt = 0; 
+    int ropt = 0;
     int Copt = 0; 
     int Ropt = 0;
-    int Eopt = 0;
-    int Popt = 0;
-    int Qopt = 0;
+    int eopt = 0;
+    int popt = 0;
+    int qopt = 0;
 
     Vopt = 0;
 
@@ -255,8 +274,11 @@ main (int argc, char  **argv)
     else
 	progname = argv[0];
 
-    while ((c = getopt(argc, argv, "xmoncrCReP:vq")) != EOF) {
+    while ((c = getopt(argc, argv, "axmoncrCReP:W:vq")) != EOF) {
     	switch (c) {
+	    case 'a':
+		    skipautorun = 1;
+		    break;
 	    case 'x':
 #if defined(VMS) || defined(MSDOS) || !defined(CRYPT_PATH)
 		    (void) fprintf(stderr, "Crypt not available\n");
@@ -266,47 +288,51 @@ main (int argc, char  **argv)
 #endif
 		    break;
 	    case 'm':
-		    Mopt = 1;
+		    mopt = 1;
 		    break;
 	    case 'o':
-		    Oopt = 1;
+		    oopt = 1;
 		    break;
 	    case 'n':
-		    Nopt = 1;
+		    nopt = 1;
 		    break;
 	    case 'c':
-		    Copt = 1;
+		    copt = 1;
 		    break;
 	    case 'r':
-		    Ropt = 1;
+		    ropt = 1;
 		    break;
 	    case 'C':
+		    Copt = 1;
 		    craction = CRCOLS;
 		    break;
 	    case 'R':
+		    Ropt = 1;
 		    craction = CRROWS;
 		    break;
 	    case 'e':
 		    rndtoeven = 1;
-		    Eopt = 1;
+		    eopt = 1;
 		    break;
 	    case 'P':
-		    Popt = 1;
+	    case 'W':
+		    popt = 1;
 	    case 'v':
 		    break;
 	    case 'q':
-		    Qopt = 1;
+		    qopt = 1;
 		    break;
 	    default:
-		    (void) fprintf(stderr,"Usage: %s [-cemnoqrxCR] [file...]\n",
-			progname);
+		    (void) fprintf(stderr,
+			    "Usage: %s [-acemnoqrxCR] [file...]\n", progname);
 		    exit (1);
 	}
     }
 
-    if (!isatty(STDOUT_FILENO) || Popt || Qopt) usecurses = FALSE;
+    if (!isatty(STDOUT_FILENO) || popt || qopt) usecurses = FALSE;
     startdisp();
     signals();
+    read_hist();
 
     /* setup the spreadsheet arrays, initscr() will get the screen size */
     if (!growtbl(GROWNEW, 0, 0)) {
@@ -318,7 +344,7 @@ main (int argc, char  **argv)
      * Build revision message for later use:
      */
 
-    if (Popt)
+    if (popt)
 	*revmsg = '\0';
     else {
 	(void) strcpy(revmsg, progname);
@@ -328,60 +354,78 @@ main (int argc, char  **argv)
 	(void) strcat(revmsg, ":  Type '?' for help.");
     }
 
-#ifndef MSDOS
+#ifdef MSDOS
+    if (optind < argc)
+#else 
     if (optind < argc && !strcmp(argv[optind], "--"))
 	optind++;
     if (optind < argc && argv[optind][0] != '|' &&
-	    !strcmp(argv[optind], "-"))
-#else 
-    if (optind < argc)
+	    strcmp(argv[optind], "-"))
 #endif /* MSDOS */
 	(void) strcpy(curfile, argv[optind]);
+    for (dbidx = DELBUFSIZE - 1; dbidx >= 0; ) {
+	delbuf[dbidx] = NULL;
+	delbuffmt[dbidx--] = NULL;
+    }
+    if (usecurses && has_colors())
+	initcolor(0);
+
     if (optind < argc) {
-	readfile(argv[optind], 1);
+	if (!readfile(argv[optind], 1) && (optind == argc - 1))
+	    error("New file: \"%s\"", curfile);
 	EvalAll();
 	optind++;
     } else
 	erasedb();
+
     while (optind < argc) {
-	readfile(argv[optind], 0);
+	(void) readfile(argv[optind], 0);
 	optind++;
     }
+
+    savedrow[0] = currow;
+    savedcol[0] = curcol;
+    savedstrow[0] = strow;
+    savedstcol[0] = stcol;
     EvalAll();
 
-    if (!(Popt || isatty(STDIN_FILENO)))
-	readfile("-", 0);
+    if (!(popt || isatty(STDIN_FILENO)))
+	(void) readfile("-", 0);
 
-    if (Qopt) {
+    if (qopt) {
 	stopdisp();
 	exit (0);
     }
 
-    if (usecurses && has_colors())
-	initcolor(0);
-
     clearok(stdscr, TRUE);
     EvalAll();
 
-    if (Mopt)
+    if (mopt)
 	autocalc = 0;
-    if (Oopt)
+    if (oopt)
 	optimize = 1;
-    if (Nopt)
+    if (nopt)
 	numeric = 1;
-    if (Copt)
+    if (copt)
 	calc_order = BYCOLS;
-    if (Ropt)
+    if (ropt)
 	calc_order = BYROWS;
-    if (Eopt)
+    if (Copt)
+	craction = CRCOLS;
+    if (Ropt)
+	craction = CRROWS;
+    if (eopt)
 	rndtoeven = 1;
-    if (Popt) {
+    if (popt) {
 	char *redraw = NULL;
 	int o;
 
-	optind = 0;
+#ifdef BSD43
+	optreset = 1;
+#endif
+	optind = 1;
 	stopdisp();
-	while ((o = getopt(argc, argv, "xmoncrCReP:vq")) != EOF) {
+	while ((o = getopt(argc, argv, "axmoncrCReP:W:vq")) != EOF) {
 	    switch (o) {
 		case 'v':
 		    Vopt = 1;
@@ -435,7 +479,7 @@ main (int argc, char  **argv)
 				    break;
 				case ctl('l'):
 				    FullUpdate++;
-				    clearok(stdscr,1);
+				    clearok(stdscr, 1);
 				    break;
 				default:
 				    write_line(c);
@@ -446,7 +490,7 @@ main (int argc, char  **argv)
 			     */
 			    if (mode_ind == 'i')
 				write_line(ctl('v'));
-			    error("Select range:");
+			    error("");
 			    update(1);
 			}
 			stopdisp();
@@ -465,6 +509,12 @@ main (int argc, char  **argv)
 			yyparse();
 		    }
 		    Vopt = 0;
+		    break;
+		case 'W':
+		    strcpy(line, "write ");
+		    strcat(line, optarg);
+		    linelim = 0;
+		    yyparse();
 		    break;
 		default:
 		    break;
@@ -704,7 +754,6 @@ main (int argc, char  **argv)
 
 		case ctl('m'):
 		case ctl('j'):
-		    numeric_field = 0;
 		    write_line(ctl('m'));
 		    break;
 
@@ -752,6 +801,7 @@ main (int argc, char  **argv)
 		    error(
 "Toggle: a:auto,c:cell,e:ext funcs,n:numeric,t:top,$:pre-scale,<MORE>");
 #endif
+		    if (braille) move(1, 0);
 		    (void) refresh();
 
 		    switch (nmgetch()) {
@@ -780,6 +830,13 @@ main (int argc, char  **argv)
 			    repaint(lastmx, lastmy, fwidth[lastcol]);
 			    error("Cell highlighting %sabled.",
 				    showcell ? "en" : "dis");
+			    --modflg;	/* negate the modflg++ */
+			    break;
+			case 'b':
+			    braille ^= 1;
+			    error("Braille enhancement %sabled.",
+				    braille ? "en" : "dis");
+			    --modflg;	/* negate the modflg++ */
 			    break;
 			case 's':
 			    cslop ^= 1;
@@ -837,6 +894,7 @@ main (int argc, char  **argv)
 			    break;
 			case ESC:
 			case ctl('g'):
+			    error("");
 			    --modflg;	/* negate the modflg++ */
 			    break;
 			case 'r': case 'R':
@@ -848,11 +906,13 @@ main (int argc, char  **argv)
 				    break;
 				case 'j':
 				case ctl('n'):
+				case KEY_DOWN:
 				    craction = CRROWS;
 				    error("Down row after new line");
 				    break;
 				case 'l':
 				case ' ':
+				case KEY_RIGHT:
 				    craction = CRCOLS;
 				    error("Right column after new line");
 				    break;
@@ -868,6 +928,11 @@ main (int argc, char  **argv)
 			    autoinsert = (!autoinsert);
 			    error("Autoinsert %sabled.",
 				   autoinsert? "en" : "dis");
+			    break;
+			case 'w': case 'W':
+			    autowrap = (!autowrap);
+			    error("Autowrap %sabled.",
+				   autowrap? "en" : "dis");
 			    break;
 			case 'z': case 'Z':
 			    rowlimit = currow;
@@ -921,18 +986,18 @@ main (int argc, char  **argv)
 		    if (linelim >= 0)
 			write_line(c);
 		    else {
-			/* Remember the current position */
-			savedrow[0] = currow;
-			savedcol[0] = curcol;
-			savedstrow[0] = strow;
-			savedstcol[0] = stcol;
-
+			remember(0);
 			currow = 0;
 			curcol = 0;
 			rowsinrange = 1;
 			colsinrange = fwidth[curcol];
+			remember(1);
 			FullUpdate++;
 		    }
+		    break;
+		case '\035':	/* ^] */
+		    if (linelim >= 0)
+			write_line(c);
 		    break;
 
 	    } /* End of the control char switch stmt */
@@ -945,17 +1010,8 @@ main (int argc, char  **argv)
 		if (c == '0') {    /* just a '0' goes to left col */
 		    if (linelim >= 0)
 			write_line(c);
-		    else {
-			/* Remember the current position */
-			savedrow[0] = currow;
-			savedcol[0] = curcol;
-			savedstrow[0] = strow;
-			savedstcol[0] = stcol;
-
-			curcol = 0;
-			rowsinrange = 1;
-			colsinrange = fwidth[curcol];
-		    }
+		    else
+			leftlimit();
 		} else {
 		    nedistate = 0;
 		    narg = c - '0';
@@ -969,6 +1025,7 @@ main (int argc, char  **argv)
 	    deraw(1);
 	    system("man sc");
 	    goraw();
+	    clear();
 	} else if (linelim >= 0) {
 	    /* Editing line */
 	    switch (c) {
@@ -985,8 +1042,15 @@ main (int argc, char  **argv)
 	} else if (!numeric && ( c == '+' || c == '-' )) {
 	    /* increment/decrement ops */
 	    register struct ent *p = *ATBL(tbl, currow, curcol);
-	    if (!p || !(p->flags & is_valid))
+	    if (!p || !(p->flags & is_valid)) {
+		if (c == '+') {
+		    editv(currow, curcol);
+		    linelim = strlen(line);
+		    insert_mode();
+		    write_line(ctl('v'));
+		}
 		continue;
+	    }
 	    if (p->expr && !(p->flags & is_strexpr)) {
 		error("Can't increment/decrement a formula\n");
 		continue;
@@ -1002,8 +1066,9 @@ main (int argc, char  **argv)
 	    if (fkey[c - KEY_F0 - 1]) {
 		char *tpp;
 
-		write_line(ctl('m'));	/* switch to insert mode */
+		insert_mode();
 		strcpy(line, fkey[c - KEY_F0 - 1]);
+		linelim = 0;
 		for (tpp = line; *tpp != '\0'; tpp++)
 		    if (*tpp == '\\' && *(tpp + 1) == '"')
 			memmove(tpp, tpp + 1, strlen(tpp));
@@ -1038,201 +1103,188 @@ main (int argc, char  **argv)
 		case '.':
 		    if (locked_cell(currow, curcol))
 			break;
+		    /* set mark 0 */
+		    savedrow[27] = currow;
+		    savedcol[27] = curcol;
+		    savedstrow[27] = strow;
+		    savedstcol[27] = stcol;
+
 		    numeric_field = 1;
 		    (void) sprintf(line,"let %s = %c",
 			    v_name(currow, curcol), c);
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 
 		case '+':
 		case '-':
 		    if (!locked_cell(currow, curcol)) {
+			struct ent *p = lookat(currow, curcol);
+			/* set mark 0 */
+			savedrow[27] = currow;
+			savedcol[27] = curcol;
+			savedstrow[27] = strow;
+			savedstcol[27] = stcol;
+
 			numeric_field = 1;
 			editv(currow, curcol);
-			edit_mode();
-			write_line('A');
-			write_line(c);
+			linelim = strlen(line);
+			insert_mode();
+			if (c == '-' || p->flags & is_valid)
+			    write_line(c);
+			else
+			    write_line(ctl('v'));
 		    }
 		    break;
 
 		case '=':
 		    if (locked_cell(currow, curcol))
 			break;
+		    /* set mark 0 */
+		    savedrow[27] = currow;
+		    savedcol[27] = curcol;
+		    savedstrow[27] = strow;
+		    savedstcol[27] = stcol;
+
 		    (void) sprintf(line,"let %s = ", v_name(currow, curcol));
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 
 		case '!':
-		    {
-		    /*
-		     *  "! command"  executes command
-		     *  "!"	forks a shell
-		     *  "!!" repeats last command
-		     */
-#if VMS || MSDOS
-		    error("Not implemented on VMS or MS-DOS");
-#else /* VMS */
-		    char *shl;
-		    int pid, temp;
-		    char cmd[MAXCMD];
-		    static char lastcmd[MAXCMD];
-
-		    if (!(shl = getenv("SHELL")))
-			shl = "/bin/sh";
-
-		    deraw(1);
-		    (void) fputs("! ", stdout);
-		    (void) fflush(stdout);
-		    (void) fgets(cmd, MAXCMD, stdin);
-		    cmd[strlen(cmd) - 1] = '\0';	/* clobber \n */
-		    if (strcmp(cmd,"!") == 0)		/* repeat? */
-			(void) strcpy(cmd, lastcmd);
-		    else
-			(void) strcpy(lastcmd, cmd);
-
-		    if (modflg) {
-			(void) puts ("[No write since last change]");
-			(void) fflush(stdout);
-		    }
-
-		    if (!(pid = fork())) {
-			(void) signal(SIGINT, SIG_DFL);  /* reset */
-			if(strlen(cmd))
-			    (void) execl(shl,shl,"-c",cmd,(char *)0);
-			else
-			    (void) execl(shl, shl, (char *)0);
-			exit (-127);
-		    }
-
-		    while (pid != wait(&temp));
-
-		    (void) printf("Press any key to continue ");
-		    fflush(stdout);
-		    cbreak();
-		    (void)getch();
-		    goraw();
-#endif /* VMS */
+		    doshell();
 		    break;
-		    }
 
 		/*
 		 * Range commands:
 		 */
 
-		case '/':
-		    edit_mode();
+		case 'r':
 		    error(
 "Range: x:erase v:value c:copy f:fill d:def l:lock U:unlock S:show u:undef F:fmt");
+		    if (braille) move(1, 0);
 		    (void) refresh();
 
-		    switch (nmgetch()) {
+		    c = nmgetch();
+		    error("");
+		    switch (c) {
 		    case 'l':
-			(void) sprintf(line,"lock [range] ");
-			write_line('A');
+			(void) sprintf(line, "lock [range] ");
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case 'U':
-			(void) sprintf(line,"unlock [range] ");
-			write_line('A');
+			(void) sprintf(line, "unlock [range] ");
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case 'c':
-			(void) sprintf(line,"copy [dest_range src_range] ");
-			write_line('A');
+			(void) sprintf(line, "copy [dest_range src_range] ");
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case 'm':
-			error("");
-			(void) sprintf(line,"move [destination src_range] %s ",
-			    v_name(currow, curcol));
-			write_line('A');
+			(void) sprintf(line, "move [destination src_range] %s ",
+				v_name(currow, curcol));
+			linelim = strlen(line);
+			insert_mode();
 		        write_line(ctl('v'));
 			break;
 		    case 'x':
-			(void) sprintf(line,"erase [range] ");
-			write_line('A');
+			(void) sprintf(line, "erase [range] ");
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case 'y':
-			(void) sprintf(line,"yank [range] ");
-			write_line('A');
+			(void) sprintf(line, "yank [range] ");
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case 'v':
 			(void) sprintf(line, "value [range] ");
-			write_line('A');
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case 'f':
-			(void) sprintf(line,"fill [range start inc] ");
-			write_line('A');
+			(void) sprintf(line, "fill [range start inc] ");
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case 'd':
-			(void) sprintf(line,"define [string range] \"");
-			write_line('A');
+			(void) sprintf(line, "define [string range] \"");
+			linelim = strlen(line);
+			insert_mode();
 			break;
 		    case 'u':
-			(void) sprintf(line,"undefine [range] ");
-			write_line('A');
+			(void) sprintf(line, "undefine [range] ");
+			linelim = strlen(line);
+			insert_mode();
 			break;
 		    case 'r':
 			error("frame (top/bottom/left/right/all/unframe)");
+			if (braille) move(1, 0);
 			refresh();
 			linelim = 0;
-			switch (nmgetch()) {
-			case 't':
-			    sprintf(line,"frametop [<outrange> rows] ");
-			    break;
-			case 'b':
-			    sprintf(line,"framebottom [<outrange> rows] ");
-			    break;
-			case 'l':
-			    sprintf(line,"frameleft [<outrange> cols] ");
-			    break;
-			case 'r':
-			    sprintf(line,"frameright [<outrange> cols] ");
-			    break;
-			case 'a':
-			    sprintf(line,"frame [<outrange> inrange] ");
-			    write_line('A');
-			    startshow();
-			    break;
-			case 'u':
-			    sprintf(line,"unframe [<range>] ");
-			    write_line('A');
-			    startshow();
-			    break;
-			case ESC:
-			case ctl('g'):
-			    error("");
-			    linelim = -1;
-			    break;
-			default:
-			    error("Invalid frame command");
-			    linelim = -1;
-			    break;
+			c = nmgetch();
+			error("");
+			switch (c) {
+			    case 't':
+				sprintf(line, "frametop [<outrange> rows] ");
+				break;
+			    case 'b':
+				sprintf(line, "framebottom [<outrange> rows] ");
+				break;
+			    case 'l':
+				sprintf(line, "frameleft [<outrange> cols] ");
+				break;
+			    case 'r':
+				sprintf(line, "frameright [<outrange> cols] ");
+				break;
+			    case 'a':
+				sprintf(line, "frame [<outrange> inrange] ");
+				break;
+			    case 'u':
+				sprintf(line, "unframe [<range>] ");
+				break;
+			    case ESC:
+			    case ctl('g'):
+				linelim = -1;
+				break;
+			    default:
+				error("Invalid frame command");
+				linelim = -1;
+				break;
 			}
 			if (linelim == 0) {
-			    error("");
-			    write_line('A');
+			    linelim = strlen(line);
+			    insert_mode();
 			}
+			if (c == 'a' || c == 'u')
+			    startshow();
 			break;
 		    case 's':
 			(void) sprintf(line, "sort [range \"criteria\"] ");
-			write_line('A');
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case 'C':
-			(void) sprintf(line,"color [range color#] ");
-			write_line('A');
+			(void) sprintf(line, "color [range color#] ");
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
-		    case 'S':	/* Show color definitions and ranges */
+		    case 'S':
+			/* Show color definitions and various types of
+			 * ranges
+			 */
 			if (!are_ranges() && !are_frames() && !are_colors())
 			    error("Nothing to show");
 			else {
@@ -1263,17 +1315,58 @@ main (int argc, char  **argv)
 			break;
 		    case 'F':
 			(void) sprintf(line, "fmt [range \"format\"] ");
-			write_line('A');
+			linelim = strlen(line);
+			insert_mode();
+			startshow();
+			break;
+		    case '{':
+			(void) sprintf(line, "leftjustify [range] ");
+			linelim = strlen(line);
+			insert_mode();
+			startshow();
+			break;
+		    case '}':
+			(void) sprintf(line, "rightjustify [range] ");
+			linelim = strlen(line);
+			insert_mode();
+			startshow();
+			break;
+		    case '|':
+			(void) sprintf(line, "center [range] ");
+			linelim = strlen(line);
+			insert_mode();
 			startshow();
 			break;
 		    case ESC:
 		    case ctl('g'):
-			error("");
 			break;
 		    default:
 			error("Invalid region command");
 			break;
 		    }
+		    break;
+
+		case '~':
+		    (void) sprintf(line, "abbrev \"");
+		    linelim = strlen(line);
+		    insert_mode();
+		    break;
+
+		case '"':
+		    error("Select buffer (a-z or 0-9):");
+		    if ((c=nmgetch()) == ESC || c == ctl('g')) {
+			error("");
+		    } else if (c >= '0' && c <= '9') {
+			qbuf = c - '0' + (DELBUFSIZE - 10);
+			error("");
+		    } else if (c >= 'a' && c <= 'z') {
+			qbuf = c - 'a' + (DELBUFSIZE - 36);
+			error("");
+		    } else if (c == '"') {
+			qbuf = 0;
+			error("");
+		    } else
+			error("Invalid buffer");
 		    break;
 
 		/*
@@ -1331,6 +1424,13 @@ main (int argc, char  **argv)
 				break;
 
 			    case 'p':
+				if (rcqual == '.') {
+				    (void) sprintf(line, "pullcopy ");
+				    linelim = strlen(line);
+				    insert_mode();
+				    startshow();
+				    break;
+				}
 				while (arg--)		pullcells(rcqual);
 				break;
 
@@ -1352,7 +1452,7 @@ main (int argc, char  **argv)
 				} else
 				    valueize_area(0, curcol,
 					    maxrow, curcol + arg - 1);
-				modflg = 1;
+				modflg++;
 				break;
 
 			    case 'Z':
@@ -1382,39 +1482,11 @@ main (int argc, char  **argv)
 		    }
 
 		case '$':
-		    {
-		    register struct ent *p;
-
-		    /* Remember the current position */
-		    savedrow[0] = currow;
-		    savedcol[0] = curcol;
-		    savedstrow[0] = strow;
-		    savedstcol[0] = stcol;
-
-		    curcol = maxcols - 1;
-		    while (!VALID_CELL(p, currow, curcol) && curcol > 0)
-			curcol--;
-		    rowsinrange = 1;
-		    colsinrange = fwidth[curcol];
+		    rightlimit();
 		    break;
-		    }
 		case '#':
-		    {
-		    register struct ent *p;
-
-		    /* Remember the current position */
-		    savedrow[0] = currow;
-		    savedcol[0] = curcol;
-		    savedstrow[0] = strow;
-		    savedstcol[0] = stcol;
-
-		    currow = maxrows - 1;
-		    while (!VALID_CELL(p, currow, curcol) && currow > 0)
-			currow--;
-		    rowsinrange = 1;
-		    colsinrange = fwidth[curcol];
+		    gotobottom();
 		    break;
-		    }
 		case 'w':
 		    {
 		    register struct ent *p;
@@ -1467,15 +1539,7 @@ main (int argc, char  **argv)
 		    break;
 		    }
 		case '^':
-		    /* Remember the current position */
-		    savedrow[0] = currow;
-		    savedcol[0] = curcol;
-		    savedstrow[0] = strow;
-		    savedstcol[0] = stcol;
-
-		    currow = 0;
-		    rowsinrange = 1;
-		    colsinrange = fwidth[curcol];
+		    gototop();
 		    break;
 #ifdef KEY_HELP
 		case KEY_HELP:
@@ -1485,116 +1549,131 @@ main (int argc, char  **argv)
 		    break;
 		case '\\':
 		    if (!locked_cell(currow, curcol)) {
+			/* set mark 0 */
+			savedrow[27] = currow;
+			savedcol[27] = curcol;
+			savedstrow[27] = strow;
+			savedstcol[27] = stcol;
+
 			(void) sprintf(line, "label %s = \"",
 				v_name(currow, curcol));
 			linelim = strlen(line);
-			edit_mode();
-			write_line('A');
+			insert_mode();
 		    }
 		    break;
 
 		case '<':
 		    if (!locked_cell(currow, curcol)) {
+			/* set mark 0 */
+			savedrow[27] = currow;
+			savedcol[27] = curcol;
+			savedstrow[27] = strow;
+			savedstcol[27] = stcol;
+
 			(void) sprintf(line, "leftstring %s = \"",
 				v_name(currow, curcol));
 			linelim = strlen(line);
-			edit_mode();
-			write_line('A');
+			insert_mode();
 		    }
 		    break;
 
 		case '>':
 		    if (!locked_cell(currow, curcol)) {
+			/* set mark 0 */
+			savedrow[27] = currow;
+			savedcol[27] = curcol;
+			savedstrow[27] = strow;
+			savedstcol[27] = stcol;
+
 		       (void) sprintf(line, "rightstring %s = \"",
 			      v_name(currow, curcol));
 		       linelim = strlen(line);
-		       edit_mode();
-		       write_line('A');
+		       insert_mode();
 		    }
 		    break;
 		case '{':
 		    {
-			struct ent *p = lookat(currow, curcol);
-			if (p->label) {
-			    p->flags &= ~is_label;
-			    p->flags |= is_leftflush | is_changed;
-			    changed++;
-			    modflg++;
-			} else
+			struct ent *p = *ATBL(tbl, currow, curcol);
+
+			if (p && p->label)
+			    ljustify(currow, curcol, currow, curcol);
+			else
 			    error("Nothing to justify");
 			break;
 		    }
 		case '}':
 		    {
-			struct ent *p = lookat(currow, curcol);
-			if (p->label) {
-			    p->flags &= ~(is_label | is_leftflush);
-			    p->flags |= is_changed;
-			    changed++;
-			    modflg++;
-			} else
+			struct ent *p = *ATBL(tbl, currow, curcol);
+
+			if (p && p->label)
+			    rjustify(currow, curcol, currow, curcol);
+			else
 			    error("Nothing to justify");
 			break;
 		    }
 		case '|':
 		    {
-			struct ent *p = lookat(currow, curcol);
-			if (p->label) {
-			    p->flags &= ~is_leftflush;
-			    p->flags |= is_label | is_changed;
-			    changed++;
-			    modflg++;
-			} else
+			struct ent *p = *ATBL(tbl, currow, curcol);
+
+			if (p && p->label)
+			    center(currow, curcol, currow, curcol);
+			else
 			    error("Nothing to center");
 			break;
 		    }
 		case 'e':
 		    if (!locked_cell(currow, curcol)) {
 			struct ent *p = lookat(currow, curcol);
+
+			/* set mark 0 */
+			savedrow[27] = currow;
+			savedcol[27] = curcol;
+			savedstrow[27] = strow;
+			savedstcol[27] = stcol;
+
 			editv(currow, curcol);
-			edit_mode();
-			if (!(p->flags & is_valid))
-			    write_line('A');
+			if (!(p->flags & is_valid)) {
+			    linelim = strlen(line);
+			    insert_mode();
+			} else
+			    edit_mode();
 		    }
 		    break;
 		case 'E':
 		    if (!locked_cell(currow, curcol)) {
+			/* set mark 0 */
+			savedrow[27] = currow;
+			savedcol[27] = curcol;
+			savedstrow[27] = strow;
+			savedstcol[27] = stcol;
+
 			edits(currow, curcol);
 			edit_mode();
 		    }
 		    break;
 		case 'f':
-		    if (arg == 1)
-			(void) sprintf(line, "format [for column] %s ",
-				coltoa(curcol));
-		    else {
-			(void) sprintf(line, "format [for columns] %s:",
-				coltoa(curcol));
-			(void) sprintf(line+strlen(line), "%s ",
-				coltoa(curcol+arg-1));
-		    }
-		    error("Current format is %d %d %d",
-			fwidth[curcol],precision[curcol],realfmt[curcol]);
-		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    formatcol(arg);
 		    break;
 		case 'F': {
 		    register struct ent *p = *ATBL(tbl, currow, curcol);
 		    if (p && p->format) {
 			(void) sprintf(line, "fmt [format] %s \"%s",
-			    v_name(currow, curcol), p->format);
+				v_name(currow, curcol), p->format);
 			edit_mode();
 			linelim = strlen(line) - 1;
 		    } else {
 			(void) sprintf(line, "fmt [format] %s \"",
 				   v_name(currow, curcol));
-			edit_mode();
-			write_line('A');
+			insert_mode();
+			linelim = strlen(line);
 		    }
 		    break;
 		}
 		case 'C': {
+		    if (braille) {
+			braillealt ^= 1;
+			break;
+		    }
 		    error("Color number to set (1-8)?");
 		    if ((c=nmgetch()) == ESC || c == ctl('g')) {
 			error("");
@@ -1612,8 +1691,7 @@ main (int argc, char  **argv)
 			line[linelim] = '\0';
 			edit_mode();
 		    } else {
-			edit_mode();
-			write_line('A');
+			insert_mode();
 		    }
 		    break;
 		}
@@ -1623,8 +1701,10 @@ main (int argc, char  **argv)
 		case 'g':
 		    (void) sprintf(line, "goto [v] ");
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
+		    break;
+		case 'n':
+		    go_last();
 		    break;
 		case 'P':
 		    (void) sprintf(line, "put [\"dest\" range] \"");
@@ -1653,14 +1733,12 @@ main (int argc, char  **argv)
 			    strlen(curfile + strlen(curfile) + 1)) = '\0';
 		    curfile[strlen(curfile)] = c;
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 		case 'M':
 		    (void) sprintf(line, "merge [\"source\"] \"");
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 		case 'R':
 		    if (mdir)
@@ -1668,14 +1746,12 @@ main (int argc, char  **argv)
 		    else
 			(void) sprintf(line,"merge [\"macro_file\"] \"");
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 		case 'D':
 		    (void) sprintf(line, "mdir [\"macro_directory\"] \"");
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 		case 'A':
 		    if (autorun)
@@ -1683,16 +1759,14 @@ main (int argc, char  **argv)
 		    else
 			(void) sprintf(line, "autorun [\"macro_file\"] \"");
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 		case 'G':
 		    (void) sprintf(line, "get [\"source\"] \"");
 		    if (*curfile)
 			error("Default file is \"%s\"", curfile);
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 		case 'W':
 		    (void) sprintf(line, "write [\"dest\" range] \"");
@@ -1735,18 +1809,16 @@ main (int argc, char  **argv)
 			    strlen(curfile + strlen(curfile) + 1)) = '\0';
 		    curfile[strlen(curfile)] = c;
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 		case 'S':	/* set options */
-		    (void) sprintf (line, "set ");
+		    (void) sprintf(line, "set ");
 		    error("Options:byrows,bycols,iterations=n,tblstyle=(0|tbl|latex|slatex|tex|frame),<MORE>");
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 		case 'T':	/* tbl output */
-		    (void) sprintf (line, "tbl [\"dest\" range] \"");
+		    (void) sprintf(line, "tbl [\"dest\" range] \"");
 
 /* See the comments under "case 'W':" above for an explanation of the
  * logic here.
@@ -1784,33 +1856,18 @@ main (int argc, char  **argv)
 			    strlen(curfile + strlen(curfile) + 1)) = '\0';
 		    curfile[strlen(curfile)] = c;
 		    linelim = strlen(line);
-		    edit_mode();
-		    write_line('A');
+		    insert_mode();
 		    break;
 #ifdef KEY_DC
 		case KEY_DC:
 #endif
 		case 'x':
-		    {
-		    register struct ent **pp;
-		    register int c1;
-
-		    flush_saved();
-		    if (arg == 1) {
-			pp = ATBL(tbl, currow, curcol);
-			if ((*pp) && !locked_cell(currow, curcol)) {
-			    dbidx++;
-			    free_ent(*pp);
-			    *pp = NULL;
-			}
-		    } else if (calc_order == BYROWS)
-			erase_area(currow, curcol, currow, curcol + arg - 1);
+		    if (calc_order == BYROWS)
+			eraser(lookat(currow, curcol),
+				lookat(currow, curcol + arg - 1));
 		    else
-			erase_area(currow, curcol, currow + arg - 1, curcol);
-		    sync_refs();
-		    modflg++;
-		    FullUpdate++;
-		    }
+			eraser(lookat(currow, curcol),
+				lookat(currow + arg - 1, curcol));
 		    break;
 		case 'Q':
 		case 'q':
@@ -1860,17 +1917,7 @@ main (int argc, char  **argv)
 		    break;
 #ifdef KEY_HOME
 		case KEY_HOME:
-		    /* Remember the current position */
-		    savedrow[0] = currow;
-		    savedcol[0] = curcol;
-		    savedstrow[0] = strow;
-		    savedstcol[0] = stcol;
-
-		    currow = 0;
-		    curcol = 0;
-		    rowsinrange = 1;
-		    colsinrange = fwidth[curcol];
-		    FullUpdate++;
+		    gohome();
 		    break;
 #endif
 		case 'L':
@@ -1886,12 +1933,23 @@ main (int argc, char  **argv)
 		    break;
 		case 'c':
 		    error("Copy marked cell:");
-		    if ((c=nmgetch()) == ESC || c == ctl('g')) {
+		    if ((c = nmgetch()) == ESC || c == ctl('g')) {
 			error("");
 			break;
 		    }
-		    if ((c -= ('a' - 1)) < 1 || c > 26) {
-			error("Invalid character for mark (must be a-z)");
+		    if (c == '.') {
+			copy(NULL, NULL, lookat(currow, curcol), NULL);
+			(void) sprintf(line, "copy [dest_range src_range] ");
+			linelim = strlen(line);
+			insert_mode();
+			startshow();
+			break;
+		    }
+		    if (c == '`' || c == '\'')
+			c = 0;
+		    else if (!(((c -= ('a' - 1)) > 0 && c < 27) ||
+			    ((c += ('a' - '0' + 26)) > 26 && c < 37))) {
+			error("Invalid mark (must be a-z, 0-9, ` or \')");
 			break;
 		    }
 		    if (savedrow[c] == -1) {
@@ -1900,29 +1958,40 @@ main (int argc, char  **argv)
 		    }
 		    error("");
 		    {
-			register struct ent *p = *ATBL(tbl, savedrow[c], savedcol[c]);
+			struct ent *p = *ATBL(tbl, savedrow[c], savedcol[c]);
 			int c1;
-			register struct ent *n;
-			if (!p)
-			    break;
+			struct ent *n;
+
+			for (c1 = curcol; arg-- && c1 < maxcols; c1++) {
+			    if ((n = *ATBL(tbl, currow, c1))) {
+				if (n->flags & is_locked)
+				    continue;
+				if (!p) {
+				    (void) clearent(n);
+				    continue;
+				}
+			    } else {
+				if (!p) break;
+				n = lookat(currow, c1);
+			    }
+			    copyent(n, p, currow - savedrow[c],
+				    c1 - savedcol[c], 0, 0, maxrow, maxcol, 0);
+			    n->flags |= is_changed;
+			}
+
 			FullUpdate++;
 			modflg++;
-			for (c1 = curcol; arg-- && c1 < maxcols; c1++) {
-			    n = lookat(currow, c1);
-			    (void) clearent(n);
-			    copyent(n, p, currow - savedrow[c], c1 - savedcol[c]);
-			}
-		    break;
+			break;
 		    }
 		case '`':
 		case '\'':
 			dotick(c);
 			break;
-		case 'n':
+		case '*':
 		    {
 			register struct ent *p;
 
-			error("Note: Add/Delete/Show?");
+			error("Note: Add/Delete/Show/*(go to note)?");
 			if ((c = nmgetch()) == ESC || c == ctl('g')) {
 			    error("");
 			    break;
@@ -1931,16 +2000,19 @@ main (int argc, char  **argv)
 			    sprintf(line, "addnote [target range] %s ", 
 				    v_name(currow, curcol));
 			    linelim = strlen(line);
-			    edit_mode();
-			    write_line('A');
+			    insert_mode();
 			    write_line(ctl('v'));
 			    error("");
+			    FullUpdate++;
 			    break;
 			}
 			if (c == 'd' || c == 'D') {
 			    p = lookat(currow, curcol);
 			    p->nrow = p->ncol = -1;
+			    p->flags |= is_changed;
 			    error("");
+			    modflg++;
+			    FullUpdate++;
 			    break;
 			}
 			if (c == 's' || c == 'S') {
@@ -1950,12 +2022,14 @@ main (int argc, char  **argv)
 			    error("Highlighted cells have attached notes.");
 			    break;
 			}
+			if (c == '*') {
+			    gotonote();
+			    error("");
+			    break;
+			}
 			error("Invalid command");
 			break;
 		    }
-		case '*':
-			gotonote();
-			break;
 		case 'z':
 		    switch (c = nmgetch()) {
 			case ctl('m'):
@@ -1987,6 +2061,13 @@ main (int argc, char  **argv)
 			    break;
 		    }
 		    break;
+#ifdef KEY_RESIZE
+		case KEY_RESIZE:
+#ifndef	SIGWINCH
+		    winchg();
+#endif
+		    break;
+#endif
 		default:
 		    if ((toascii(c)) != c)
 			error ("Weird character, decimal %d\n",
@@ -2001,6 +2082,7 @@ main (int argc, char  **argv)
     inloop = modcheck(" before exiting");
     }				/*  while (inloop) */
     stopdisp();
+    write_hist();
 #ifdef VMS	/* Until VMS "fixes" exit we should say 1 here */
     exit (1);
 #else
@@ -2049,7 +2131,9 @@ signals()
     (void) signal(SIGQUIT, dump_me);
     (void) signal(SIGPIPE, nopipe);
     (void) signal(SIGALRM, time_out);
+#ifndef __DJGPP__
     (void) signal(SIGBUS, doquit);
+#endif
 #endif
     (void) signal(SIGTERM, doquit);
     (void) signal(SIGFPE, doquit);
@@ -2068,7 +2152,6 @@ nopipe()
     brokenpipe = TRUE;
 }
 
-#ifdef	SIGWINCH
 #ifdef SIGVOID
 void
 #else
@@ -2078,14 +2161,20 @@ winchg()
 {
     stopdisp();
     startdisp();
+    /*
+     * I'm not sure why a refresh() needs to be done both before and after
+     * the clearok() and update(), but without doing it this way, a screen
+     * (or window) that grows bigger will leave the added space blank. - CRM
+     */
     refresh();
     FullUpdate++;
     (void) clearok(stdscr, TRUE);
     update(1);
     refresh();
+#ifdef	SIGWINCH
     (void) signal(SIGWINCH, winchg);
-}
 #endif
+}
 
 #ifdef SIGVOID
 void
@@ -2098,6 +2187,7 @@ doquit()
 	diesave();
 	stopdisp();
     }
+    write_hist();
     exit (1);
 }
 

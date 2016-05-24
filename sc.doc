@@ -15,13 +15,14 @@
 .\" - TPs use default indent except for function names, then 18.
 .\" - Smallify uppercase strings.
 .\" - Avoid passive voice and third person.
-.\" $Revision: 7.13 $
+.\" $Revision: 7.16 $
 .\"
-.TH PNAME 1 "4 August 2001" "PNAME #REVISION#"
+.TH PNAME 1 "19 September 2002" "PNAME #REVISION#"
 .SH NAME
 pname \- spreadsheet calculator
 .SH SYNOPSIS
 .B pname
+.RB [ -a ]
 .RB [ -c ]
 .RB [ -e ]
 .RB [ -m ]
@@ -37,6 +38,8 @@ pname \- spreadsheet calculator
 .IR range [ /address ]
 |
 .IR /address ]
+.RB [ -W
+.IR range ]
 .RI [ file... ]
 .\" ==========
 .SH DESCRIPTION
@@ -67,7 +70,7 @@ command will be the same as the first file specified,
 and the other files will be treated as macros.
 If you want to use advanced macros from the command
 line, the ``|'' must be quoted to prevent it from being
-interpreted by the shell.
+expanded by the shell.
 .LP
 Options begin with -.
 However, an argument of a single - will be
@@ -119,6 +122,10 @@ pnameqref | [your_printer_commmand]
 .SH OPTIONS
 .\" ----------
 .TP
+.B \-a
+Do not run the autorun macro, if one is specified in the file.
+.\" ----------
+.TP
 .B \-c
 Start the program with the recalculation being done in column order.
 .\" ----------
@@ -145,7 +152,9 @@ Quit after loading all files, but before becoming interactive.
 This is useful in shell scripts for getting information from
 a file, for example, or using
 .I pname
-as a non-interactive calculator using the eval command.
+as a non-interactive calculator using the
+.I eval
+command.
 .\" ----------
 .TP
 .B \-r
@@ -163,8 +172,8 @@ option must precede the
 .I -P
 option to have an effect.
 If the
-.I -P option is used more than once,
-there must be a separate
+.I -P
+option is used more than once, there must be a separate
 .I -v
 option for each instance of the
 .I -P
@@ -223,6 +232,9 @@ not preceded by its own
 .I -v
 option will output unevaluated expressions.
 
+A range of
+.RI `` % ''
+may be used to refer to the entire spreadsheet.
 If the range is left out, as shown in the
 second form above,
 .I pname
@@ -236,6 +248,17 @@ outputting any data.
 .B \-R
 Start the program with automatic newline action set to increment the row
 (see below).
+.\" ----------
+.TP
+.B \-W
+Pipe a range to standard output.
+The output is identical to that of the
+.I Write
+command (below).
+This option may be used more than once to specify multiple ranges.
+A range of
+.RI `` % ''
+may be used to refer to the entire spreadsheet.
 .\" ----------
 .PP
 All of these options can be changed with the
@@ -266,6 +289,7 @@ If that file contains the command
 will then look for a file called .scrc in the current directory,
 and if found, load that file into memory, too (this is analogous
 to the ``set exrc'' command used by vi/ex).
+These ``dotfiles'' may be created by any text editor.
 Several commands exist specifically for setting default file
 name extensions in the .scrc file, although they may also
 be used from macros, ordinary spreadsheet files, or from within
@@ -440,8 +464,6 @@ The screen has two cursors:
 a cell cursor, indicated by either a highlighted cell
 or a ``<'' on the screen, and a character cursor,
 indicated by the terminal's hardware cursor.
-The cell and character cursors are often the same.
-They differ when you type a command on the top line.
 .\" ----------
 .PP
 If a cell's numeric value is wider than the column width (see the
@@ -456,9 +478,7 @@ can be prefixed by a numeric argument
 which indicates how many times the command is to be executed.
 You can type
 .I ^U
-before a repeat count if quick numeric entry mode is enabled
-or if the number is to be entered
-while the character cursor is on the top line.
+before a repeat count if quick numeric entry mode is enabled.
 .\" ==========
 .SS "Changing Options"
 .\" ----------
@@ -473,9 +493,9 @@ A small menu lists the choices for
 .I o
 when you type
 .IR ^T .
-The options selected are saved when the data and formulas are saved
-so that you will have the same setup next time you enter the
-spreadsheet. 
+Unless otherwise noted, the options selected are saved
+when the data and formulas are saved so that you will
+have the same setup next time you enter the spreadsheet. 
 .PD
 .RS
 .\" ----------
@@ -491,33 +511,17 @@ spreadsheet via explicit ``@'' commands.
 Default is automatic recalculation on.
 .\" ----------
 .TP
-.B o
-Automatic optimization of expressions.
-If this is enabled, expressions which evaluate to
-a constant are automatically optimized upon entry.
-For example, if you enter @pow(2,32) into a cell,
-the value 4294967296 will be stored in that cell,
-whereas if optimization is turned off, the calculated
-value will be displayed, but the actual expression will
-be stored in the cell instead.
-This allows you to edit the expression instead of
-re-entering it from scratch when you just want to
-make a minor change.
-Default is automatic optimization off.
-.\" ----------
-.TP
-.B i
-Automatic insertion of rows/columns.
-If this is enabled and craction is set to move the
-cell cursor either down or to the right after entering
-data into a cell, and the last cell in a row/column
-in the scrolling portion of a framed range was just
-filled, causing the cell cursor to move outside of this
-range, a new column/row will be inserted, thus enlarging
-the range and allowing you to continue entering data
-into the row/column without overwriting the frame (which
-may contain expressions of some sort, such as totals).
-Default is no automatic insertion.
+.B b
+Braille enhancement mode.
+See the braille section under the
+.I Set
+command below for a complete description of
+how to use this mode.
+This option is not saved when saving a file,
+to allow blind and sighted users to easily
+share files.  It is intended for use in a user's
+.I .scrc
+file.
 .\" ----------
 .TP
 .B c
@@ -542,9 +546,44 @@ and the result of
 is the value from the previous call, if any, or a null string.
 .\" ----------
 .TP
+.B i
+Automatic insertion of rows/columns.
+If this is enabled and craction is set to move the
+cell cursor either down or to the right after entering
+data into a cell, and the last cell in a row/column
+in the scrolling portion of a framed range was just
+filled, causing the cell cursor to move outside of this
+range, a new column/row will be inserted, thus enlarging
+the range and allowing you to continue entering data
+into the row/column without overwriting the frame (which
+may contain expressions of some sort, such as totals).
+If autowrap is also enabled, it will take precedence,
+and a new row/column will only be inserted after
+entering data in the very last cell (bottom right corner)
+of the scrolling range.
+The default is no automatic insertion.
+.\" ----------
+.TP
+.B w
+Automatic wrap to next row/column.
+If this is enabled and craction is set to move the
+cell cursor either down or to the right after entering
+data into a cell, and the last cell in a row/column
+in the scrolling portion of a framed range was just
+filled, causing the cell cursor to move outside of this
+range, the cell cursor will move to the first cell in
+the next row/column in this range.
+If this would also take the cursor out of the scrolling
+portion of the range, the cursor will remain in last
+edited cell instead, unless autoinsert is also enabled,
+in which case a new row/column will be added so that
+the cursor can wrap.
+The default is no autowrap.
+.\" ----------
+.TP
 .B l
 Autolabeling.
-If enabled, using the define command (/d) causes
+If enabled, using the define command (rd) causes
 a label to be automatically generated in the cell
 to the left of the defined cell.
 This is only done if the cell to the left is empty.
@@ -558,9 +597,33 @@ a typed digit is assumed to be
 the start of a numeric value for the current cell,
 not a repeat count, unless preceded by
 .IR ^U .
+Also, the `+' and `-' keys will enter insert mode
+and append a `+' or `-' to the existing contents
+of the cell, allowing the user to easily add to or
+subtract from the current numeric contents of the cell.
 The cursor controls
-.RI ( ^P or ^N )
-in this mode will end a numeric entry.
+.RI ( ^P ,
+.IR ^N ,
+or any of the arrow keys)
+in this mode will end a numeric entry if the entry
+was started by pressing `+', `-', or a digit.
+Switching from insert mode to edit mode will cause the
+cursor controls to revert to their normal functions.
+.\" ----------
+.TP
+.B o
+Automatic optimization of expressions.
+If this is enabled, expressions which evaluate to
+a constant are automatically optimized upon entry.
+For example, if you enter @pow(2,32) into a cell,
+the value 4294967296 will be stored in that cell,
+whereas if optimization is turned off, the calculated
+value will be displayed, but the actual expression will
+be stored in the cell instead.
+This allows you to edit the expression instead of
+re-entering it from scratch when you just want to
+make a minor change.
+Default is automatic optimization off.
 .\" ----------
 .TP
 .B t
@@ -585,13 +648,6 @@ it follows as
 which may be a constant or expression.
 .\" ----------
 .TP
-.B x
-Encryption.
-See the
-.B \-x
-option.
-.\" ----------
-.TP
 .B $
 Dollar prescale.
 If enabled, all numeric
@@ -604,7 +660,9 @@ if you enter lots of dollar figures.
 .B r
 Newline action.
 This is a 3-way toggle which determines which direction to
-move after pressing the RETURN key to enter data into a cell.
+move after pressing the
+.SM RETURN
+key to enter data into a cell.
 It has the same effect as using the
 .I set
 (S) command to set the value of craction.
@@ -613,10 +671,15 @@ the direction you want to move.
 Valid directions are down (craction=1) and to the right (craction=2).
 Pressing j, ^N, or the cursor-down key will cause
 the cursor to move down a cell each time you press
-the RETURN key and pressing l, the cursor-right key, or the
+the
+.SM RETURN
+key and pressing l, the cursor-right key, or the
 space bar will cause the cursor to move one cell to the right.
-Pressing the RETURN key at the prompt selects no action
-(craction=0, meaning the cursor stays in the current cell).
+Pressing the
+.SM RETURN
+key at the prompt selects no action
+(craction=0, which means that the cursor will remain in
+the current cell).
 No action is the default unless
 .I pname
 is started with either the -R or -C option.
@@ -641,6 +704,13 @@ entirety.
 Cslop is disabled by default.
 .\" ----------
 .TP
+.B x
+Encryption.
+See the
+.B \-x
+option.
+.\" ----------
+.TP
 .B z
 Set newline action limits.
 This option sets limits to the newline action option above.
@@ -657,24 +727,24 @@ then the current cell is instead moved to the top row of the next column.
 Color.
 This option enables color, and must be set before any
 other color options, such as colorneg (color negative
-numbers) or colorerr (color cells with errors) will
+numbers) or colorerr (color cells with errors), will
 have an effect.
 On a slow connection, turning off color can noticeably
 speed up screen updates.
-.\" ----------
-.TP
-.B N
-Color negative numbers.
-When this option is set, all cells containing negative
-numbers will have their color number increased by one.
-Cells with color 8 will cycle back to color 1.
-Color must be enabled for this option to take effect.
 .\" ----------
 .TP
 .B E
 Color cells with errors.
 Setting this option will cause all cells with expressions
 which evaluate to ERROR or INVALID to be set to color 3.
+Color must be enabled for this option to take effect.
+.\" ----------
+.TP
+.B N
+Color negative numbers.
+When this option is set, all cells containing negative
+numbers will have their color number incremented by one.
+Cells with color 8 will cycle back to color 1.
 Color must be enabled for this option to take effect.
 .PP
 The quick numeric entry, newline action and set
@@ -691,6 +761,11 @@ setting the quick numeric entry option, setting the newline action to move
 right after each entry and setting the newline action limits on the last
 column on which data should be entered will allow the data to entered
 quickly.
+An alternative to setting newline action limits is to
+enclose the range for entry in a frame (see "Framed Ranges"
+below), and setting the autowrap option.
+Setting autoinsert will insert new rows as needed if the
+frame includes data at the bottom.
 If necessary, columns which do not need data to be
 entered can be hidden with the
 .B z
@@ -715,7 +790,7 @@ above.
 Specify the order cell evaluation when updating.
 These options also affect the order in which
 cells are filled (see 
-.IR /f )
+.IR rf )
 and whether a row or column is cleared by an 
 .I x
 command.
@@ -756,6 +831,16 @@ to give a
 simple tabbed alignment with ampersands as delimiters; and
 .B frame
 to give a tblstyle output for FrameMaker.
+.\" ----------
+.TP
+.BI pagesize =n
+Set the page size for the PageUp, PageDown, J, and K commands.
+If set to 0, the default is to move up or down
+half the number of rows displayed on the screen,
+or if the current cell is in a framed range,
+half the number of displayed rows in the scrolling
+region of that range.
+.\" ----------
 .PP
 Other
 .I Set
@@ -774,6 +859,10 @@ Set/clear auto recalculation mode.
 Set/clear automatic insertion mode.
 .\" ----------
 .TP
+.BR autowrap / !autowrap
+Set/clear autowrap mode.
+.\" ----------
+.TP
 .BR optimize / !optimize
 Set/clear auto optimize mode.
 .\" ----------
@@ -788,10 +877,6 @@ Set/clear numeric prescale mode.
 .TP
 .BR extfun / !extfun
 Enable/disable external functions.
-.\" ----------
-.TP
-.BR cellcur / !cellcur
-Set/clear current cell highlighting mode.
 .\" ----------
 .TP
 .BR toprow /  !toprow
@@ -836,15 +921,6 @@ can be
 (default) to disable this facility.
 .\" ----------
 .TP
-.BI pagesize =n
-Set the page size for the PageUp, PageDown, J, and K commands.
-If set to 0, the default is to move up or down
-half the number of rows displayed on the screen,
-or if the current cell is in a framed range,
-half the number of rows in the scrolling region
-of that range.
-.\" ----------
-.TP
 .BI collimit =n
 Set the remembered limit for the maximum column to the right of which
 the current cell will be moved to the left of the next row
@@ -855,7 +931,7 @@ can be
 (default) to disable this facility.
 .\" ----------
 .TP
-.BI color
+.BR color / !color
 Enable color.
 This option must be set for any other color options,
 such as colorneg or colorerr, to take effect.
@@ -863,7 +939,7 @@ On a slow connection, turning off color can noticeably
 speed up screen updates.
 .\" ----------
 .TP
-.BI colorneg
+.BR colorneg / !colorneg
 Color negative numbers.
 When this option is set, all cells containing negative
 numbers will have their color number increased by one.
@@ -871,16 +947,16 @@ Cells with color 8 will cycle back to color 1.
 Color must be enabled for this option to take effect.
 .\" ----------
 .TP
-.BI colorerr
+.BR colorerr / !colorerr
 Color cells with errors.
 Setting this option will cause all cells with expressions
 which evaluate to ERROR or INVALID to be set to color 3.
 Color must be enabled for this option to take effect.
 .\" ----------
 .TP
-.BI cslop
+.BR cslop / !cslop
 Enable color slop.
-If a string that is wider than the cell that contains it,
+If a cell's label string is wider than the column width,
 it will slop over into the next cell to the right if that
 cell is empty.
 However, if that cell is in a different color range than
@@ -890,24 +966,108 @@ or not.
 If cslop is enabled, strings may slop over even if the
 next cell is in a different color range, carrying their
 color with them, which may cause a ragged boundary between
-the ranges, but allows the strings to be seen in their
+the ranges, but may allow the strings to be seen in their
 entirety.
+Cslop is disabled by default.
+.PP
+The following
+.I Set
+options are considered personal preferences,
+or are terminal dependent, and are therefore not
+saved when saving a file, but are instead intended
+for use in a user's .scrc file.
+.\" ----------
+.TP
+.BR braille / !braille
+Set/clear braille enhancement mode.
+When braille enhancement mode is set, the cursor
+behaves in a manner that makes the use of
+.I pname
+much easier when using a braille display.
+In spite of its name, this mode also works well with
+screen readers such as SpeakUp, and can even be used
+by sighted users to make cutting and pasting using the
+.I screen
+program much easier.
+
+There are actually two different braille modes.
+When the braille option is set, the
+.I C
+command, which is normally used to set colors,
+will instead change from one braille mode to the other.
+If it is desired to set/change colors so you can
+share files with others not using a braille display,
+braille mode will have to be switched off temporarily,
+and then switched back on after the color operation
+is done.
+
+When the braille option is set, the default braille mode
+will cause the cursor to be positioned at the left edge of
+the current cell, while the alternate braille mode will
+cause the cursor to be placed at the beginning of the top
+line, which will contain information such as the current
+cell address, contents of the cell, and column formatting
+information.
+The column names will also be moved to the left edge of
+their respective columns in order to remain aligned with
+the cursor as it moves up and down the column.
+
+In either mode, the cursor will be placed in the
+top line when editing a line, except when switching
+to navigate mode, in which case the cursor will be
+placed in either the current cell (default braille mode)
+or the second line, where the cell address or default
+range will be displayed (alternate braille mode).
+
+Whenever a message is displayed on the second line,
+such as an error message or prompt for further
+information, both modes will cause the cursor to
+be placed at the beginning of that message.
+After this message goes away, the cursor will
+revert to its former behavior.
+The easiest way to make this message go away
+without effecting anything, except in the cases
+where it is asking the user for more information,
+is to press
+.IR CC ,
+which effectively changes modes twice, with a net
+effect of leaving
+.I pname
+in the original mode.
+.\" ----------
+.TP
+.BR locale / !locale
+If locale support is compiled into
+.IR pname ,
+this option will cause certain locale-dependent
+behaviors, such as the display of numbers and the
+determination of word boundaries for some operations
+in edit mode.
+Note that if this option is set and the environment
+variable LC_ALL is unrecognized, unset, or set to
+either ``POSIX'' or ``C'', commas in format commands
+will be ignored.
+.\" ----------
+.TP
+.BR cellcur / !cellcur
+Set/clear current cell highlighting mode.
+This option is included here because it is likely to
+be terminal dependent and/or a user preference,
+and therefore is not saved when saving a file.
 .\" ----------
 .TP
 .BI scrc
-This is intended for your $HOME/.scrc file.
 It tells
 .I pname
 to also read the file .scrc in the current directory when starting.
 Settings in this file will override those in $HOME/.scrc
-but may be overridden by equivalent command line options,
-if available.
+but may themselves be overridden by command line options.
 Setting this could be a potential security risk, since starting
 .I pname
 with an unknown .scrc could potentially execute arbitrary commands.
 This risk is probably very slight, since a spreadsheet program
 is not likely to be run in just any directory, and should
-.B NEVER
+.B never
 be run as root.
 .RE
 .\" ==========
@@ -917,7 +1077,9 @@ be run as root.
 .PD 0
 .TP
 .B ^A
-Go to cell A0 (same as HOME).
+Go to cell
+.I A0
+(same as HOME).
 .PD
 .\" ----------
 .TP
@@ -935,6 +1097,11 @@ Move the cell cursor backward one column.
 .TP
 .B SPACE
 Move the cell cursor forward one column.
+When in navigate mode, if a range is highlighted,
+insert the highlighted range into the command line,
+followed by a space, while remaining in navigate mode.
+This is useful when entering copy, move, or frame commands,
+for example, which accept more than one range argument.
 .\" ----------
 .TP
 .B "h, j, k, l"
@@ -971,7 +1138,8 @@ Otherwise, move the cell cursor forward one column.
 .\" ----------
 .TP
 .B HOME
-Go to cell A0.
+Go to cell
+.IR A0 .
 .\" ----------
 .TP
 .B END
@@ -1047,7 +1215,7 @@ You can also search formatted numbers or expressions
 using regular expressions by preceding the opening quotes
 of the regular expression with a ``#'' (for formatted
 numbers) or a ``%'' (for expressions).
-This is handy for searching for dates within a specified
+These are handy for searching for dates within a specified
 range or cells which reference a given cell, for example,
 although they are somewhat slower than searching through
 ordinary strings, since all numbers must be formatted or
@@ -1069,6 +1237,8 @@ The last
 .I g
 command is saved, and can be re-issued by entering 
 .IR g<return> .
+You can also repeat the last search by pressing
+.IR n .
 .IP
 An optional second argument is available whose meaning
 depends on whether you're doing a search or jumping to a
@@ -1125,15 +1295,26 @@ Mark the current cell.
 will prompt for a lowercase letter to be
 used as a mark specifier.
 Marked cells may be used as the source for the
-.I copy
-command, or as the target of a
+.I c
+(copy a marked cell) command, or as the target of a
 .I `
 or
 .I '
 (go to marked cell) command.
+In addition to cells marked with lowercase letters,
+.I pname
+also automatically marks the last nine cells that
+have been edited with the numbers 1-9, and the
+current cell being edited with the number 0.
+When not editing a cell, marks 0 and 1 usually
+refer to the same cell, unless the last edit was
+begun in one cell, but the cell address was changed
+before pressing the
+.SM RETURN
+key, or the last edit was aborted prematurely.
 .\" ----------
 .TP
-.BI ' x
+.BI ` x
 Jump to a previously marked cell.
 If the target cell is currently on the screen,
 .I pname
@@ -1141,24 +1322,24 @@ will simply jump to the target cell, making it current.
 Otherwise,
 .I pname
 will attempt to center the cell on the screen, if possible.
-As a special case, following the ' with another ' will
+As a special case, following the ` with another ` will
 return you to the cell you were in before the last g, ', `,
 *, or ^E (or END key) was used to jump to another cell.
 .\" ----------
 .TP
-.BI ` x
+.BI ' x
 Jump to a previously marked cell.
-.I `
-works just like
 .I '
-, except that
+works just like
 .I `
+, except that
+.I '
 will attempt to restore the marked cell to the same
 position on the screen as when it was marked.
 It does this by remembering which cell was in the upper
 left hand corner of the screen at the time the mark was
 set, and restoring that cell to its original position.
-As a special case, following the ` with another ` will
+As a special case, following the ' with another ' will
 return you to the cell you were in before the last g, ', `,
 *, or ^E (or END key) was used to jump to another cell,
 and will also try to position that cell on the screen in
@@ -1209,13 +1390,17 @@ option or
 .I ^T
 command, shows the prompt when you enter the first digit of a number
 (you can skip typing ``='').
+If you want to begin entering an expression in the current cell,
+but you want to start out in navigate mode (e.g. to enter cell
+addresses, or sums of ranges using ``@sum''), use the ``+''
+command instead (see below).
 .\" ----------
 .TP
 .B <
 Enter a label string into the current cell
 to be flushed left against the left edge of the cell.
 .\" ----------
-.IP \fB"\fP
+.IP \fB\\\\\fP
 Enter a label string into the current cell
 to be centered in the column.
 .\" ----------
@@ -1242,7 +1427,10 @@ Enter a format string into the current cell.
 This format string overrides the precision
 specified with the
 .I f
-command.
+command unless
+.I &
+is present in the fractional part of the format
+string (see below).
 The format only applies to numeric values.
 There are two types of format strings allowed:
 standard numeric and date.
@@ -1281,6 +1469,10 @@ side of the decimal point.
 Decimal point.
 Determines how many digits are placed on
 the right and left sides of the decimal point in the number.
+If
+.I locale
+is set, the decimal point for the user's current locale
+will be used when formatting a number.
 Note that numbers smaller than 1 will begin with a decimal
 point if the left side of the decimal point contains only
 a `#' digit placeholder.
@@ -1300,6 +1492,13 @@ The presence of a `,' in the format
 to be formatted with a `,' separating each set of three digits
 in the integer part of the number with numbering beginning
 from the right end of the integer.
+If
+.I locale
+is set, the thousands separator for the user's current
+locale will be used in place of the comma.
+If the environment variable LC_ALL is unset, unrecognized,
+or is set to ``POSIX'' or ``C'',  any commas in the format
+string will be ignored.
 .TP
 .BR &
 Precision.
@@ -1377,14 +1576,14 @@ Move back a character
 Enter navigate mode.
 This mode allows you to navigate the spreadsheet
 while editing a command.
-Pressing
-.I ^V
-or
+When in navigate mode,
 .I v
-again will insert the name of the current cell
-(the one at the cell cursor) into the command line.
-This is useful when entering expressions
-which refer to other cells in the table.
+will insert the
+numeric value of the current cell, if any,
+into the command line, instead, while
+.I ^V
+will return to the previous mode (like 
+the ESCAPE key).
 .TP
 .BR ^W
 Insert the expression attached to the current
@@ -1393,9 +1592,10 @@ If there is none, the result is ``?''.
 This only works while in navigate mode.
 .TP
 .BR ^A
-When in navigate mode, insert the numeric value
-of the current cell, if any, into the command line.
-Otherwise, jump to the beginning of the line.
+In navigate mode, go to cell
+.IR A0 .
+When not in navigate mode, jump to the
+beginning of the line instead.
 .TP
 .BR ^E
 Jump to the end of the line.
@@ -1443,7 +1643,9 @@ you don't need to press the first
 to begin defining a range starting with the current cell.
 .TP
 .BR :
-Synonym for TAB, when in navigate mode.
+Synonym for
+.SM TAB,
+when in navigate mode.
 .TP
 .BR "` '"
 In navigate mode, go to marked cell.
@@ -1461,14 +1663,22 @@ Backward through history (same as k)
 Done editing
 .TP
 .BR CR
-Save
+Save.
+When in navigate mode, insert the name of the current
+cell (the one at the cell cursor) into the command line.
+This is useful when entering expressions
+which refer to other cells in the table.
 .TP
 .BR $
 Goto last column
 .TP
+.BR %
+Goto matching parenthesis
+.TP
 .BR .
 Insert current dot buffer.
-When in navigate mode, this is a synonym for : or TAB.
+When in navigate mode, this is a synonym for : or
+.SM TAB.
 .TP
 .BR ;
 Repeat the last f, F, t, or T command.
@@ -1481,7 +1691,7 @@ but in the reverse direction.
 Change the case of the character under the cursor.
 .TP
 .BR /
-Search for a string in the history
+Search backwards for a string in the history
 .RS
 \fBESC\fP	edit the string you typed
 .br
@@ -1490,8 +1700,17 @@ Search for a string in the history
 \fB^H\fP	backspace
 .RE
 .TP
+.BR ?
+Search forward for a string in the history (see ``/'' above)
+.TP
 .BR 0
 Goto column 0
+.TP
+.BR B
+Move back a word.
+Like
+.IR b ,
+except words are space delimited only.
 .TP
 .BR C
 Change to end of line (delete first, then enter insert mode)
@@ -1508,6 +1727,9 @@ Go to the end of history, i.e., to the line being currently entered
 .BR I
 Insert at column 0; ESC revert back to edit mode
 .TP
+.BR N
+Repeat the last search in the opposite direction
+.TP
 .BR P
 Insert the most recently deleted text before the cursor
 .TP
@@ -1516,6 +1738,12 @@ Replace mode; ESC revert back to edit mode
 .TP
 .BR T
 Goto a char, moving backwards in the line
+.TP
+.BR W
+Forward a word.
+Like
+.IR w ,
+except words are space delimited only.
 .TP
 .BR X
 Delete the char to the left
@@ -1584,7 +1812,11 @@ Backward through history (same as -)
 Move right a char
 .TP
 .BR n
-Continue search
+Repeat the last search (find the next match)
+.TP
+.BR o
+When highlighting a range in navigate mode, move
+to the opposite corner of the highlighted range.
 .TP
 .BR p
 Insert the most recently deleted text after the cursor
@@ -1620,7 +1852,7 @@ Use like d (above).
 .TP
 .B E
 Edit the string associated with the current cell.
-This is identical to ``<'', ``"'', or ``>''
+This is identical to ``<'', ``\\'', or ``>''
 except that the command line starts out containing
 the old string value or expression associated with the cell.
 SEE
@@ -1628,14 +1860,45 @@ SEE
 ABOVE.
 .\" ----------
 .PP
-To enter and edit a cell's number part, use the ``='' and
+To enter and edit a cell's number part, use the ``='', ``+'', and
 .I e
 commands.
-To enter and edit a cell's string part, use the ``<'', ``"'', ``>'', and
+To enter and edit a cell's string part, use the ``<'', ``\\'', ``>'', and
 .I E
 commands.
 See the sections below on numeric and string
 expressions for more information.
+
+Note that the descriptions of the ``+'' and ``-'' commands below
+may seem very confusing at first, but once they're understood,
+they can facilitate the rapid entry of expressions which add and
+subtract large numbers of cells and sums of ranges of cells, so read
+them over carefully several times until you understand them.
+.\" ----------
+.IP \fB"\fP
+Specify a named buffer for the next
+yank/delete/pull command.
+Buffers are named with a single character.
+Buffers
+.RI `` a ''
+through
+.RI `` z ''
+are general purpose buffers,
+buffers
+.RI `` 1 ''
+through
+.RI `` 9 ''
+hold the last nine deletions,
+with buffer
+.RI `` 1 ''
+being the most recent,
+and buffer
+.RI `` 0 ''
+holds the last cell or range yanked.
+Buffer
+.RI `` """" ''
+is the default buffer, which holds the last
+cell or range that was deleted or yanked.
 .\" ----------
 .TP
 .B x
@@ -1667,35 +1930,103 @@ or
 .\" ----------
 .TP
 .BI c x
-Copy a previously marked cell to the current cell, updating row
-and column references in its numeric or string expression, if any.
+Copy a marked cell to the current cell, adjusting row and
+column references in its numeric or string expression, if any.
+.I pname
+will prompt for the name of the cell to be copied, which may
+be a lowercase letter specified previously with the
+.I m
+command, a digit 1-9 to reference one of the last nine edited
+cells (0 will reference the last cell in which an edit was
+begun, regardless of whether the edit was completed or not), or
+.RI `` . ''
+to reference the current cell, which, as a special case, is to
+be used as a source rather than a destination, and is to be
+copied into a range which includes the current cell.
+When
+.RI `` . ''
+is specified, the current cell is set as the default source
+range for the range copy
+.RI ( rc )
+command, and then the
+.I copy
+command is entered into the command line and
+.I pname
+switches to navigate mode.
+Moving the cell cursor will then highlight the destination
+range.
+After the desired range is highlighted, press
+.SM RETURN
+to execute the copy.
 .\" ----------
 .TP
 .B +
 If not in numeric mode, add the current numeric argument
 (default 1) to the value of the current cell.
-In numeric mode, ``+'' switches to insert mode and appends
-a ``+'' to the current expression or value, if any, which
-makes it easy to add to existing data.
-In navigate mode, ``+'' inserts the current cell address
-into the line, followed by a ``+'' and remains in navigate
-mode.
+The current value of the cell must not be an expression.
+In numeric mode,
+.I +
+switches to insert mode and appends a ``+'' to the current
+expression or value, if any, which makes it easy to add to
+existing data.
+
+In navigate mode,
+.I +
+inserts the current cell address into the line, followed
+by another
+.IR + ,
+and
+.I pname
+remains in navigate mode, unless a range is highlighted.
+If a range is highlighted and the character immediately
+preceding the cursor is a ``+'' or ``-'',
+or the cursor is at the beginning of an empty ``let''
+expression, the string ``@sum('' will be
+inserted, followed by the highlighted range, followed
+by ``)+''.
+If a range is highlighted and the character immediately
+preceding the cursor is not a ``+'' or ``-'', and the
+cursor is not at the beginning of an empty ``let''
+expression, the highlighted range will be inserted,
+followed by  ``)+''.
 .\" ----------
 .TP
 .B -
 If not in numeric mode, subtract the current numeric
 argument (default 1) from the value of the current cell.
-In numeric mode, ``+'' switches to insert mode and appends
-a ``-'' to the current expression or value, if any, which
-makes it easy to subtract from existing data.
-In navigate mode, ``-'' inserts the current cell address
-into the line, followed by a ``-'' and remains in navigate
-mode.
+The current value of the cell must not be an expression.
+In numeric mode,
+.I -
+switches to insert mode and appends a ``-'' to the current
+expression or value, if any, which makes it easy to subtract
+from existing data.
+
+In navigate mode,
+.I -
+inserts the current cell address into the line, followed
+by another
+.IR - ,
+and
+.I pname
+remains in navigate mode, unless a range is highlighted.
+If a range if highlighted and the character immediately
+preceding the cursor is a ``+'' or ``-'',
+or the cursor is at the beginning of an empty ``let''
+expression, the string ``@sum('' will be
+inserted, followed by the highlighted range, followed
+by ``)-''.
+If a range is highlighted and the character immediately
+preceding the cursor is not a ``+'' or ``-'', and the
+cursor is not at the beginning of an empty ``let''
+expression, the highlighted range will be inserted,
+followed by  ``)-''.
 .\" ----------
 .TP
 .B RETURN
 If you are not editing a cell (top line is empty),
-pressing RETURN will make
+pressing
+.SM RETURN
+will make
 .I pname
 enter insert mode.
 At this point you may type any valid command or press
@@ -1938,21 +2269,22 @@ by moving the cell cursor, either a cell at a time, or
 by pages (roughly 1/2 screen, unless the
 .I pagesize
 option has been set), but this only works for the
-.I y
-.RI ( yank )
+.IR d ,
+.IR y ,
 and
-.I d
-.RI ( delete )
+.I Z
 commands.
 Vertical cursor movement will begin highlighting rows,
 and horizontal movement will highlight columns.
-Pressing the RETURN key will then perform the chosen
-operation on the specified rows/columns.
+Pressing the
+.SM RETURN
+key will then perform the chosen operation
+on the specified rows/columns.
 .PP
 Commands which copy cells also modify the row and
 column references in affected cell expressions.
 The references may be frozen by using the
-.I fixed
+.I @fixed
 operator or using the
 .I $
 character in the reference to the cell (see below).
@@ -2019,18 +2351,40 @@ in that range, while ignoring everything outside the
 range.
 .\" ----------
 .TP
-.B "pr, pc, pm, px, pt"
+.B "pr, pc, pp, pm, px, pt, pC, p."
 Pull deleted rows/columns/cells back into the spreadsheet.
-The last set of cells that was deleted, yanked, or moved
-is put back into the spreadsheet at the current location.
+The last set of cells that was deleted or yanked is put
+back into the spreadsheet at the current location.
 .I pr
 inserts enough rows to hold the data.
 .I pc
 inserts enough columns to hold the data.
-.I pm
-(merge) does not insert rows or columns;
+.I pp
+(paste) does not insert rows or columns;
 it overwrites the cells beginning at the
 current cell cursor location.
+.I pm
+(merge) merges the cells in at the current cell
+cursor location, but does not erase the destination
+range first like
+.IR pp .
+The difference between
+.I pp
+and
+.I pm
+is similar to the difference between the
+.I Get
+and
+.I Merge
+commands.
+.I pf
+(format) works like
+.I pm
+except that only cell formatting information is merged in,
+leaving the actual data untouched.
+This makes it easy to copy cell formats from one part of the
+spreadsheet to another, such as when expanding an existing
+spreadsheet file.
 .I px
 (exchange) copies the contents of the delete buffer into
 the range beginning at the current cell cursor location,
@@ -2039,8 +2393,25 @@ back into the delete buffer, replacing its current contents.
 .I pt
 (transpose) overwrites the cells beginning at the current
 cell cursor location like
-.I pm,
+.I pp,
 but transposes rows for columns and vice versa.
+.I pC
+(copy) works like
+.I pp,
+except that all cell references are adjusted in
+the same way that they are for the
+.I copy
+command.
+.I p.
+is the same as
+.I pC,
+except that it switches to navigate mode and allows
+you to define the destination range to be used.
+This works like the
+.I copy
+command in that if the source range (the contents of
+the delete buffer) is a single row, column, or cell,
+multiple copies may be made.
 .\" ----------
 .TP
 .B "vr, vc, vv"
@@ -2065,16 +2436,11 @@ still be hidden when you reload the spreadsheet.
 Hidden rows or columns are not printed by the
 .I W
 command.
-If, instead of pressing
-.I r
-or
-.I c
-after the
-.IR Z ,
-you press
-.I Z
-a second time, the file will be saved,
-if modified, and
+The
+.IR ZZ
+command is a special case.
+It does not hide anything.
+Instead, the file will be saved, if modified, and
 .I pname
 will exit.
 See
@@ -2091,27 +2457,64 @@ This command ignores the repeat count, if any.
 .\" ----------
 .TP
 .B f
-Set the output format to be used
-for printing the numeric values in each cell in the current column.
-Enter three numbers:
+Set the output format to be used for printing the
+numeric values in each cell in the current column.
+This command has only a column version (no second letter).
+You may change the column width by pressing the
+.IR h ,
+.IR < ,
+or cursor left key to reduce it, or the
+.IR l ,
+.IR > ,
+or cursor right key to increase it.
+Likewise, you may change the precision (the
+number of digits to follow decimal points)
+by pressing the
+.IR j ,
+.IR - ,
+or cursor down key to reduce it, or the
+.IR k ,
+.IR + ,
+or cursor up key to increase it.
+You may also change the format type for the
+column by pressing any digit.
+If the
+.I f
+command is preceded by a numeric argument,
+that argument will determine how many columns should
+be changed, beginning with the current column, and
+in the case of incrementing or decrementing the width
+or precision of the columns, each column will be
+incremented or decremented separately, regardless of
+its initial values.
+Several formatting operations may be performed in sequence.
+To leave the formatting command, simply press
+.BR ESC ,
+.IR ^G ,
+.IR q ,
+or
+.SM RETURN .
+.IP
+Alternatively, you may press
+.BR SPACE
+to get the
+.I format
+command in the top line and enter all three values directly.
+In order, these are:
 the total width in characters of the column,
-the number of digits to follow decimal points,
-and the format type.
+the precision, and the format type.
 Format types are 0 for fixed point, 1 for scientific
 notation, 2 for engineering notation, 3 for dates with
 a two digit year, and 4 for dates with a four digit year.
-You can also create your own format types to either
-supersede or supplement these types (see below).
-.IP
 Values are rounded off to the least significant digit displayed.
 The total column width affects displays of strings as well as numbers.
 A preceding count can be used to affect more than one column.
-This command has only a column version (no second letter).
 .IP
-If you want to define your own format types,
-simply backspace past the column name and
-enter a number between 0 and 9 followed
-by ``='' and a format string (see the 
+You can also create your own format types by pressing
+.I =
+after the
+.I f
+command, followed by any digit (see the 
 .I F
 command above under
 .I "Cell Entry and Editing Commands"
@@ -2127,8 +2530,8 @@ For example, the command
 .I "format 5 = ""#,0.& ;(#,0.&)"""
 .RE
 .IP
-will define a currency format which may then
-be assigned to column C, for example, with
+will define a currency format which may then be
+assigned to column C, for example, with the command
 .RS
 .IP
 .I format C 10 2 5
@@ -2141,14 +2544,20 @@ of the current cell respectively.
 ex: The cell directly above a cell in the D
 column could then be accessed by @nval("d",@myrow-1).
 NOTE: @myrow and @mycol can't be used in specifying ranges.
+.\" ----------
+.TP
+.B "@lastrow, @lastcol"
+These return the last row and column of the spreadsheet, respectively.
+They are useful for macros designed to default to the
+whole spreadsheet.
 .\" ==========
 .SS "Range Commands"
 .\" ----------
 Range operations affect a rectangular region on the screen
 defined by the upper left and lower right cells in the region.
-All of the commands in this class start with a slash;
+All of the commands in this class begin with ``r'';
 the second letter of the command indicates which command.
-A small menu lists the choices for the second letter when you type ``/''.
+A small menu lists the choices for the second letter when you type ``r''.
 .I pname
 prompts for needed parameters for each command.
 Phrases surrounded by square brackets in the prompt are
@@ -2159,12 +2568,12 @@ Prompts requesting variable names may be satisfied
 with either an explicit variable name, such as
 .IR A10 ,
 or with a variable name previously defined in a
-.I /d
+.I rd
 command (see below).
 Range name prompts require either an explicit range such as
 .IR A10:B20 ,
 or a range name previously defined with a
-.I /d
+.I rd
 command.
 A default range shown in the second line
 is used if you omit the range from the command or press the
@@ -2172,13 +2581,13 @@ is used if you omit the range from the command or press the
 key (see below).
 The default range can be changed by moving the cell cursor
 via the control commands
-.RI ( ^P or ^N )
+.RI ( ^P " or " ^N )
 or the arrow keys.
 The cells in the default range are highlighted
 (using the terminal's standout mode, if available).
 .\" ----------
 .TP
-.B /x
+.B rx
 Clear a range.
 Cells cleared with this command will be saved in the
 delete buffer, and may be recalled with any of the
@@ -2186,29 +2595,31 @@ delete buffer, and may be recalled with any of the
 commands.
 .\" ----------
 .TP
-.B /y
+.B ry
 Yank a range.
 Like
-.IR /x ,
+.IR rx ,
 cells yanked with this command will be saved in the
 delete buffer, and may be recalled with any of the
 .I pull
 commands.
 This command differs from
-.IR /x ,
+.IR rx ,
 however, in that the original cells will not be cleared.
 Although this command may be used to copy a range of
 cells, it treats all references as fixed.
-Use /c if you want references to be relative to the
+Use
+.I rc
+if you want references to be relative to the
 cell which contains them unless specified otherwise,
 either with the
-.I fixed
+.I @fixed
 operator or using the
 .I $
 character in the reference to the cell.
 .\" ----------
 .TP
-.B /c
+.B rc
 Copy a source range to a destination range.
 The source and destination may be different sizes.
 The result is always one or more full copies of the source.
@@ -2222,43 +2633,46 @@ This command can be used to duplicate a
 cell through an arbitrary range by making
 the source a single cell range such as
 .IR b20:b20 .
+
 If the source range is omitted (second argument),
 the source range from the last
 .I copy
-command will be used.
+command will be used, unless a range is currently
+highlighted, in which case the highlighted range
+will be copied instead.
 If both the source range and destination range
 are omitted, the current cell will be used as
-the destination.
+the destination, unless a range is currently
+highlighted, in which case the highlighted range
+will serve as the destination, and the source
+range from the last
+.I copy
+command will be copied into that destination.
 .\" ----------
 .TP
-.B /m
+.B rm
 Move a source range to a destination range.
 This differs from deleting a range with
-.I /x
+.I rx
 and pulling it back in with
 .I pm
 in that any expressions that reference a cell
 in the range to be moved will reference the cell
 at its new address after the move.
 Unlike the
-.I /c
+.I rc
 command, the destination of a move is a single cell,
 which will be the upper lefthand corner of the
 source range after the move.
-After a move operation, the delete buffer will contain
-a copy of the range that was moved, so additional
-copies may be made using any of the
-.I pull
-commands.
 .\" ----------
 .TP
-.B /v
+.B rv
 Values only.
 This command removes the expressions from a range of cells,
 leaving just the values of the expressions.
 .\" ----------
 .TP
-.B /s
+.B rs
 Sort a range.
 The rows in the specified range will be sorted according
 to criteria given in the form of a string of characters.
@@ -2267,7 +2681,9 @@ single criterion or multiple criteria in decreasing order
 of precedence.
 Each criterion has three parts, all of which are mandatory.
 The first part is a single character, which must be either
-.IR + " or " - ,
+.I +
+or
+.IR - ,
 which specifies whether the sort should be done in ascending
 or descending order, respectively.
 The second part, which is also a single character, must be either
@@ -2281,20 +2697,20 @@ The third part may be either one or two characters, and
 must be alphabetic (case insensitive), and specifies
 the column to be used when making the comparisons.
 This column must be in the range being sorted.
-Any number of criteria may be strung together, and will
+Any number of criteria may be concatenated, and will
 be used in the order specified.
-If no criteria are specified, the default is to sort
-in ascending order, first by string and second by number,
+If no criteria are specified, the default behavior is to sort
+in ascending order, first by string and then by number,
 using the leftmost column of the range being sorted.
 This is equivalent to specifying the sort criteria to be
-.IR """+$a+#a""" ,
+.RI """ +$a+#a """,
 where both
 .IR a 's
 are replaced by the name of the leftmost
 column of the range being sorted.
 .\" ----------
 .TP
-.B /f
+.B rf
 Fill a range with constant values
 starting with a given value and increasing by a given increment.
 Each row is filled before moving on to the
@@ -2305,7 +2721,19 @@ The start and increment numbers may be positive or negative.
 To fill all cells with the same value, give an increment of zero.
 .\" ----------
 .TP
-.B /d
+.B r{
+Left justify all strings in the specified range.
+.\" ----------
+.TP
+.B r}
+Right justify all strings in the specified range.
+.\" ----------
+.TP
+.B r|
+Center all strings in the specified range.
+.\" ----------
+.TP
+.B rd
 Use this command to assign a symbolic name to a single
 cell or a rectangular range of cells on the screen.
 The parameters are the name, surrounded by "",
@@ -2332,7 +2760,7 @@ are all valid names, but
 is not.
 .\" ----------
 .TP
-.B /l
+.B rl
 Use this command to lock the current cell or
 a range of cells, i.e. make them immune
 to any type of editing.
@@ -2340,13 +2768,13 @@ A locked cell can't be changed in
 any way until it is unlocked.
 .\" ----------
 .TP
-.B /U
+.B rU
 This command is the opposite of the
-.I /l
+.I rl
 command and thus unlocks a locked cell and makes it editable.
 .\" ----------
 .TP
-.B /S
+.B rS
 This command shows lists of the currently defined
 range names, framed ranges, and color definitions
 and ranges, one after the other.
@@ -2357,22 +2785,29 @@ its value is used in place of
 .IR less .
 .\" ----------
 .TP
-.B /u
+.B ru
 Use this command to undefine a previously defined range name.
 .\" ----------
 .TP
-.B /F
+.B rF
 Use this command to assign a value format string (see
 the ``F'' cell entry command) to a range of cells.
 .\" ----------
 .TP
-.B /r
+.B rr
 This command is used for creating, modifying,
 and deleting framed ranges.
 A framed range, is one which has a number of rows
 or columns specified at the top, bottom, left,
 and/or right (the frame) which must remain onscreen
 whenever the cell cursor is within that range.
+In other words, a frame consists of an outer range
+and an inner range, where the inner range is allowed
+to scroll within the outer range.
+Once a frame is defined, the inner range may be
+resized, but the outer range remains fixed unless
+rows or columns are added or deleted within the range.
+
 When this command is invoked, you will be prompted for
 the type of frame-related action you would like to perform.
 You may select an option from the list by typing its
@@ -2395,7 +2830,11 @@ or
 you will be prompted for a range and number of rows/columns.
 The range may be omitted if the cell cursor is
 in a previously defined framed range, in which case
-that range will be used instead.
+that range's outer range will be used instead.
+The number of rows/columns will set or adjust the
+width of the corresponding side of the frame.
+If all of these widths are set to zero, the frame
+will be undefined (same as the unframe command).
 
 If you choose
 .IR all ,
@@ -2406,14 +2845,25 @@ but inside the outer range will be part of the ``frame''
 that is to remain onscreen.
 The outer range may be omitted if the cell cursor is
 in a previously defined framed range, in which case
-that range will be used by default.
+the previously defined outer range will be used.
+However, if a single range is specified on the command line,
+while another range wholly contained within this range is
+highlighted, the specified range will be used as the
+outer range, and the highlighted range will be used as
+the inner range.
+If no range is specified on the command line, but a range
+is highlighted, and the highlighted range is wholly contained
+within a previously defined framed range, the highlighted
+range will be used as the inner range, and the previously
+defined outer range will be used as the outer range.
 
 If you choose
 .IR unframe,
 you will be prompted for a range, and if the
 range is found in the list of frames, the frame
 will be deleted, and the framing will no longer
-be active.
+be active (the specified range must be the outer
+range of the previously defined frame to be deleted).
 The range may be omitted if the cell cursor is
 in a previously defined framed range, in which case
 that range will be used by default.
@@ -2425,7 +2875,7 @@ an error message will be issued, and the frame
 will not be created.
 .\" ----------
 .TP
-.B /C
+.B rC
 This command defines a color range, and specifies a
 foreground/background pair to be used for that range.
 See "Color Commands" below for more information.
@@ -2458,20 +2908,26 @@ or
 .I {*note1}
 for a named range).
 You may also use the
-.I ns
+.I *s
 (Note/Show) command to highlight all cells
 on the current screen with attached notes.
 .TP
-.B na
+.B *a
 Add a note.
 This will bring up the addnote command
-in the top line, followed by the target
-where the note should be added.  You must
-then enter the cell or range where the note
+in the top line, followed by the target address
+of the cell where you want the note added.  You
+must then enter the cell or range where the note
 resides to add the note.
+If you omit the note address or range, the currently
+highlighted range, if any, will be used.
+Otherwise, the current cell will be used (you
+would, of course, want to move away from the
+cell in which the addnote command was invoked
+in the latter case).
 .\" ----------
 .TP
-.B nd
+.B *d
 Delete a note.
 If there is a note attached to the current
 cell, the link will be removed (deleted).
@@ -2481,7 +2937,7 @@ If it is no longer needed, it must be deleted
 in a separate step.
 .\" ----------
 .TP
-.B ns
+.B *s
 Show all notes on the current screen.
 If there are any cells on the visible portion
 of the spreadsheet which contain attached
@@ -2491,7 +2947,7 @@ Simply moving to a new cell will be enough
 to turn off the highlighting.
 .\" ----------
 .TP
-.B *
+.B **
 Jump to a note.
 If there is a note attached to the current cell,
 you will be immediately transported to that cell.
@@ -2514,7 +2970,8 @@ a foreground color and a background color, or
 they may be arbitrarily complex, causing the colors
 to change based upon other data in the spreadsheet,
 for example.
-Color ranges may then be defined using the /C
+Color ranges may then be defined using the
+.I rC
 command, with a color number (1-8) assigned to
 the range (see below).
 .PP
@@ -2546,7 +3003,7 @@ If two color ranges are nested or overlapping, any
 cell that is common to both will be displayed using
 the color of the most recently defined color range.
 You can list all color definitions and color ranges
-with the /S (show) command (see below).
+with the rS (show) command (see below).
 .TP
 .B C
 This command first prompts you for the color
@@ -2580,7 +3037,7 @@ See below for an explanation of the format
 of a color expression.
 .\" ----------
 .TP
-.B /C
+.B rC
 This command defines a color range, and specifies a
 foreground/background pair to be used for that range.
 Although this command also uses the
@@ -2595,7 +3052,7 @@ This syntax is:
 .RE
 .\" ----------
 .TP
-.B /S
+.B rS
 This command shows lists of the currently defined
 range names, framed ranges, and color definitions
 and ranges, one after the other.
@@ -2633,7 +3090,7 @@ foreground and a background color.
 This operator is the semicolon (;).
 For example, the command
 .IP
-.I color 1 = @white;@green"
+.I color 1 = @white;@green
 .PP
 will set the foreground color to white and the
 background color to green for any cell or range
@@ -2751,6 +3208,71 @@ Giving a null command line starts the shell in interactive mode.
 A second ``!'' repeats the previous command.
 .\" ----------
 .TP
+.B ~
+Abbreviations.
+You may set abbreviations to speed up the entry of repetitive data.
+Abbreviations work much like abbreviations in vi, except that
+when defining an abbreviation, both the abbreviation and the
+expanded text must be contained within quotes, separated by a
+single space.
+If more than one space separates the abbreviation from the
+expanded text, it will be included as part of the expanded
+text.
+
+There are three types of abbreviations available in sc.
+In the first type, all characters must be either alphanumeric
+or ``_''.
+In the second type, the last character must be alphanumeric
+or ``_'', but all other characters must not be alphanumeric
+or ``_''.
+Neither type may contain spaces.
+The third type of abbreviation is a single character, and
+must be alphanumeric or ``_''.
+
+When using abbreviations, the first type must be at the beginning
+of the line, or must be preceded by any character which is not
+alphanumeric or ``_''.
+The second type must be at the beginning of the line, or must
+be preceded either by an alphanumeric character, ``_'', or a
+space.
+Single character abbreviations must be at the beginning of the
+line or preceded by a space.
+
+Abbreviations will be automatically expanded as soon as the
+space bar or return key is pressed, or when pressing the
+ESC key at the end of the abbreviation to switch to edit mode.
+You can also force an abbreviation to be expanded by following
+it with a
+.IR ^] ,
+which won't be inserted into the line.
+If you don't want an abbreviation to be expanded, you must
+either press
+.I ^V
+twice or switch to edit mode and back again
+somewhere within the abbreviation (pressing
+.I ^V
+twice also has the effect of switching to navigate mode
+and back again).
+
+If the string in the abbreviation command contains no spaces,
+the entire string will be looked up in the list of abbreviations,
+and if found, the definition will be displayed in the form of
+the original
+.I abbreviation
+command used to define it.
+When looking up an abbreviation in this manner, be sure to
+disable abbreviation expansion, as described above, or the
+results may not be what you expect.
+
+If the string is empty, a list of all abbreviations and their
+corresponding expanded text will be output to your pager.
+Note that abbreviations are not saved with the file.
+This allows each user to create his own file of abbreviations
+and either merge them in or include them in his own .scrc file,
+rather than force all users who access a file to use the same
+list of abbreviations.
+.\" ----------
+.TP
 .B ^L
 Redraw the screen.
 .\" ----------
@@ -2808,7 +3330,7 @@ variable references are by default offset by the amount the formula moved.
 This allows the new formula to work on new data.
 If cell references are not to change,
 you can either use the
-.I fixed
+.I @fixed
 operator (see below),
 or one of the following variations on the cell name.
 .\" ----------
@@ -2840,12 +3362,12 @@ If the range is defined with fixed variable references,
 the references do not change.
 .\" ----------
 .TP
-.B fixed
+.B @fixed
 To make a variable not change automatically when a cell moves,
 put the word
-.I fixed
+.I @fixed
 in front of the reference, for example:
-B1 \(** fixed C3.
+B1 \(** @fixed C3.
 .\" ==========
 .SS "Numeric Expressions"
 .\" ----------
@@ -2909,7 +3431,7 @@ Relationals:
 true (1) if and only if the indicated relation holds,
 else false (0).
 Note that ``<='', ``!='', and ``>=''
-are converted to their ``~()'' equivalents.
+are converted to their ``!()'' equivalents.
 .PD
 .\" ----------
 .TP
@@ -2942,7 +3464,7 @@ Operator precedence from highest to lowest is:
 .PP
 .nf
 .RS
-\-, ~
+\-, ~, !
 ^
 \(**, /
 +, \-
@@ -2956,6 +3478,150 @@ Operator precedence from highest to lowest is:
 .SS "Built-in Range Functions"
 .\" ----------
 These functions return numeric values.
+The @sum, @prod, @avg, @count, @max, @min, and @stddev functions
+may take an optional second argument which is an expression that
+is to be evaluated for each cell in the specified range to determine
+which cells to include in the function.
+Only those cells for which the expression evaluates to true (non-zero)
+will be used in calculating the value of the function.
+Before evaluation for each cell, the expression is first converted
+as if it was being copied from the cell in the upper left-hand corner
+of the range into the cell under consideration, with all cell
+references adjusted accordingly.
+Because the parts of the expression that should remain fixed during
+the evaluation of the function may not necessarily be the same as
+those which should remain fixed during an actual copy operation,
+the rules for adjusting cell references during a copy operation are
+slightly different than normal.
+In particular, these rules differ in two different ways.
+
+The first difference is that the
+.I @fixed
+operator is ignored during a copy operation unless it is enclosed
+in parentheses.
+This is so that selected cells whose addresses should remain fixed
+during any given evaluation of a range function can be adjusted
+relative to the cell containing the range function when copied (the
+.I $
+prefix is still honored for these cells when copying).
+Enclosing the
+.I @fixed
+operator in parentheses will have the opposite effect.
+That is, it will cause cell references to be fixed while copying,
+while allowing them to be adjusted when the function is being evaluated,
+subject to any
+.I $
+prefixes present.
+Note that only the
+.I @fixed
+operator itself should be enclosed in parentheses for this to work properly.
+
+The second difference is that any references in the expression
+that refer to cells in the range in the first argument of the
+range function will have any
+.I $
+prefixes ignored, and the references will be treated instead
+as if they had the same
+.I $
+prefixes as the left side of the range argument.
+For example, if the left side of the range argument (the cell
+address on the left side of the colon) has a fixed row, but does not
+have a fixed column, any cell references that refer to cells in
+that range will also have a fixed row, but will not have a fixed
+column.
+This is so that if the range reference moves when copying,
+references to any cells in that range will also move accordingly.
+
+Note that the test expression will be evaluated once for every cell in
+the range, which means that excessive use of these functions with the
+optional test expression, or the use of overly complex test expressions
+or with very large ranges can greatly slow down the recalculation of a
+spreadsheet, and may require turning off autocalc for speed, and then manually
+recalculating with the
+.I @
+command.
+.\" ----------
+.TP 18
+.BI @sum( r )
+.PD 0
+.TP 18
+.BI @sum( r , e )
+.PD
+Sum all valid (nonblank) entries in the region
+whose two corners are defined by the two variable names (e.g.
+.IR c5:e14 )
+or the range name specified.
+The optional second argument is an expression which can be
+used to determine which cells in the range to sum (see above).
+.\" ----------
+.TP 18
+.BI @prod( r )
+.PD 0
+.TP 18
+.BI @prod( r , e )
+.PD
+Multiply together all valid (nonblank) entries in the specified region.
+The optional second argument is an expression which can be
+used to determine which cells in the range to multiply (see above).
+.\" ----------
+.TP 18
+.BI @avg( r )
+.PD 0
+.TP 18
+.BI @avg( r , e )
+.PD
+Average all valid (nonblank) entries in the specified region.
+The optional second argument is an expression which can be
+used to determine which cells in the range to average (see above).
+.\" ----------
+.TP 18
+.BI @count( r )
+.PD 0
+.TP 18
+.BI @count( r , e )
+.PD
+Count all valid (nonblank) entries in the specified region.
+The optional second argument is an expression which can be
+used to determine which cells in the range to count (see above).
+.\" ----------
+.TP 18
+.BI @max( r )
+.PD 0
+.TP 18
+.BI @max( r , e )
+.PD
+Return the maximum value in the specified region.
+The optional second argument is an expression which can be
+used to exclude specific cells in the range when determining
+this maximum value (see above).
+See also the multi argument version of
+.I @max
+below.
+.\" ----------
+.TP 18
+.BI @min( r )
+.PD 0
+.TP 18
+.BI @min( r , e )
+.PD
+Return the minimum value in the specified region.
+The optional second argument is an expression which can be
+used to exclude specific cells in the range when determining
+this minimum value (see above).
+See also the multi argument version of
+.I @min
+below.
+.\" ----------
+.TP 18
+.BI @stddev( r )
+.PD 0
+.TP 18
+.BI @stddev( r , e )
+.PD
+Return the sample standard deviation of the cells in the specified region.
+The optional second argument is an expression which can be
+used to exclude specific cells in the range when calculating
+the standard deviation (see above).
 .\" ----------
 .TP 18
 .BI @rows( r )
@@ -2964,43 +3630,6 @@ Return the number of rows in the specified range.
 .TP 18
 .BI @cols( r )
 Return the number of columns in the specified range.
-.\" ----------
-.TP 18
-.BI @sum( r )
-Sum all valid (nonblank) entries in the region
-whose two corners are defined by the two variable names (e.g.
-.IR c5:e14 )
-or the range name specified.
-.\" ----------
-.TP 18
-.BI @prod( r )
-Multiply together all valid (nonblank) entries in the specified region.
-.\" ----------
-.TP 18
-.BI @avg( r )
-Average all valid (nonblank) entries in the specified region.
-.\" ----------
-.TP 18
-.BI @count( r )
-Count all valid (nonblank) entries in the specified region.
-.\" ----------
-.TP 18
-.BI @max( r )
-Return the maximum value in the specified region.
-See also the multi argument version of
-.I @max
-below.
-.\" ----------
-.TP 18
-.BI @min( r )
-Return the minimum value in the specified region.
-See also the multi argument version of
-.I @min
-below.
-.\" ----------
-.TP 18
-.BI @stddev( r )
-Return the sample standard deviation of the cells in the specified region.
 .\" ----------
 .TP 18
 .BI @lookup( e , r )
@@ -3328,17 +3957,6 @@ below.
 Force an error.
 This will force the expression which contains it
 to result in an error.
-When rows or columns are deleted which contain cells
-that are referenced in other expressions, all of those
-references will be replaced with
-.RI `` @ERR ''.
-The all-capitals tells you that the condition is only
-temporary, and pulling the row or column back in will
-restore the reference.
-If the file is saved first, and then reread, however,
-it will contain
-.I @err
-so that you can find and fix the error.
 .\" ==========
 .SS "String Expressions"
 .\" ----------
@@ -3369,6 +3987,27 @@ string is ``the la''.
 \0 \" exactly one blank line (hard to get)
 .PD 0
 .TP 18
+.BI @filename( e )
+Return the current default filename, as specified
+when the file was first loaded or created,
+or during the last save, with the
+.I Put
+command.
+If
+.I e
+is 0, only the actual filename will be returned,
+with any path removed.
+If non-zero, the full path specified on the command line
+or in the last
+.I Get
+or
+.I Put
+command will be returned.
+If the path begins with ``~'', it will be expanded to
+the appropriate users home directory.
+.PD
+.\" ----------
+.TP 18
 .BI @substr( se , e1 , e2 )
 Extract and return from string expression
 .I se
@@ -3385,7 +4024,6 @@ is less than 1 or greater than
 .IR e2 ,
 the result is the null string.
 For example,
-.PD
 .IP ""
 	@substr ("Nice jacket", 4, 8)
 .IP ""
@@ -3428,13 +4066,15 @@ You can use this for simple table lookups.
 Be sure the table doesn't move unexpectedly!
 .\" ----------
 .TP 18
-.BI @upper( e )
-and
-.BI @lower( e )
+.BI @upper( se )
+.PD 0
+.TP 18
+.BI @lower( se )
 will case the string expression to upper or lower.
+.PD
 .\" ----------
 .TP 18
-.BI @capital( e )
+.BI @capital( se )
 will convert the first letter of words in a string
 into upper case and other letters to lower case
 (the latter if all letters of the string are upper case).
@@ -3529,7 +4169,7 @@ compounded monthly?"
 computes the present value of an ordinary annuity of
 36 monthly payments of $1000 at 18% annual interest.
 It answers the question:
-"How much can I borrow at 18% for 30 years if I
+"How much can I borrow at 18% for 3 years if I
 pay $1000 per month?"
 .\" ==========
 .SS "Built-in Date and Time Functions"
@@ -3537,7 +4177,7 @@ pay $1000 per month?"
 Time for
 .I pname
 follows the system standard:
-the number of seconds since 1970.
+the number of seconds since the beginning of 1970.
 All date and time functions except
 .IR @date ()
 return numbers, not strings.
@@ -3599,18 +4239,30 @@ The functions all convert from GMT to local time.
 .\" ----------
 .TP 18
 .BI @date( e )
-Convert the time in seconds to a date string
-24 characters long in the following form:
+.PD 0
+.TP 18
+.BI @date( e , se )
+.PD
+Convert the time in seconds to a date string.
+With a single numeric argument, the date will
+be 24 characters long in the following form:
 .IP ""
 .I "	Sun Sep 16 01:03:52 1973"
 .IP ""
 Note that you can extract parts of this fixed-format string with
 .IR @substr ().
+A format string compatible with the strftime()
+function may optionally be given as a second
+argument to override the default format.
+See the strftime(3) man page for details.
 .\" ----------
 .TP 18
 .BI @year( e )
 Return the year.
-Valid years begin with 1970.
+Valid years begin with 1970, although many
+systems will return years prior to 1970 if
+.I e
+is negative.
 The last legal year is system dependent.
 .\" ----------
 .TP 18
@@ -3666,8 +4318,9 @@ To program the function keys, you use the
 command.
 This command may be used in a
 .I .scrc
-file or a macro file, or it may be entered directly
-in the command line.
+file or a macro file, or it may be entered directly into
+.IR pname 's
+command line.
 Defined function keys will be saved with the file.
 There is no shortcut, as there is with most commands,
 so the full command must be typed in.
@@ -3709,8 +4362,9 @@ will cause the F5 key to format the current cell to display the
 full weekday name of the numeric date value stored there.
 The ^D is a CTRL-D character, which denotes a date format.
 .LP
-Although it may be overridden by the fkey command, the F1 key
-is predefined by default to execute
+Although it may be overridden by the
+.I fkey
+command, the F1 key is predefined by default to execute
 .I man sc.
 Unlike the user-defined function keys, this definition will also
 work in edit, insert, replace, and navigate modes.
@@ -3718,6 +4372,72 @@ work in edit, insert, replace, and navigate modes.
 To undefine a function key, merely define it as
 the empty string ("").
 Undefining the F1 key will restore the default behavior.
+.\" ==========
+.SS "Plugins"
+.\" ----------
+There are three ways in which external
+programs can be used as plugins with
+.IR pname .
+First, they can be used as external commands.
+When used as an external command, any command 
+not recognized by
+.I pname
+will be searched for first in $HOME/.sc/plugins,
+and then in #LIBDIR#/plugins.
+If found, it will be run with its standard input
+and standard output redirected back to
+.IR pname .
+These are used to send commands to, and receive
+responses back from
+.I pname
+in the same way that advanced macros do.
+.LP
+The second and third ways that programs can be used
+as plugins with
+.I pname
+are to automatically convert files to and from
+.I sc
+format based on their extensions.
+In order to use them in this way, you must first
+associate a given extension to a corresponding
+plugin (for reading) or plugout (for writing) using
+the
+.I plugin
+and
+.I plugout
+commands.
+These commands should be placed in your
+.I .scrc
+file, and have the following syntax:
+.IP
+.B plugin
+.I """ext""
+=
+.I """programname""
+.LP
+or
+.IP
+.B plugout
+.I """ext""
+=
+.I """programname""
+.LP
+where
+.I ext
+is the extension and
+.I programname
+is the name of the plugin program to be used
+for filenames with that extension.
+For input, the plugin merely reads the specified file,
+performs whatever conversion is necessary, and writes
+the resulting data to standard output.
+For output, the plugin writes
+.I pname
+commands to standard output and reads the replies
+from standard input in the same way that an advanced
+macro would, and then converts the data to the
+appropriate format and writes it to a file with
+the specified filename.
 .\" ==========
 .SH FILES
 .TP 3in
@@ -3735,13 +4455,6 @@ bc(1), dc(1), crypt(1), ppname(1)
 Top-to-bottom, left-to-right evaluation of expressions is silly.
 A proper following of the dependency graph
 with (perhaps) recourse to relaxation should be implemented.
-.\" ----------
-.PP
-Only one previous value is saved from any call of
-.IR @ext ().
-If it is used more than once in a spreadsheet
-and external functions are enabled and later disabled,
-the last returned value pops up in several places.
 .\" ----------
 .PP
 On some systems,
@@ -3770,7 +4483,7 @@ Jeff Buhrt
 of Proslink, Inc.
 and Robert Bond of Sequent,
 prominent among them.
-The current maintainer is Chuck Martin (cmartin@bigfoot.com).
+The current maintainer is Chuck Martin (nrocinu@myrealbox.com).
 .PP
 Other contributors include:
 Tom Anderson,
@@ -3798,6 +4511,7 @@ Kurt Horton,
 Jonathan I. Kamens,
 Peter King,
 Tom Kloos,
+Michael Lapsley,
 Casey Leedom,
 Jay Lepreau,
 Dave Lewis,

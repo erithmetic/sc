@@ -121,6 +121,12 @@ Pipe Commands:
     is not inside a framed range, an empty string will be returned (in
     other words, just a lone newline).
 
+  getrange
+
+    This command takes a string argument and checks to see if a named range
+    exists with that name.  If it does, the actual range is returned.
+    Otherwise, an empty string is returned.
+
   status
 
     This command will return a set of flags to show information about
@@ -148,11 +154,21 @@ Pipe Commands:
     display the message on the second line, and wait for the user to
     enter the appropriate information on the top line.  If a second
     string argument is present, it will be used as a default response
-    which the user can accept as is, add to, or edit.  The user may
-    switch from insert mode to edit mode, navigate mode, etc., and may
-    use any of the vi-style editing commands or operations that are
-    available during input of regular sc commands, including the use of
-    the command line history.
+    which the user can accept as is, or edit.  The user may switch
+    from insert mode to edit mode, navigate mode, etc., and may use any
+    of the vi-style editing commands or operations that are available
+    during input of regular sc commands, including the use of the
+    command line history.
+
+  getkey
+
+    This command can be used to get a single key from the user.  For
+    special keys, such as Insert, Delete, function keys, cursor keys,
+    etc., a NULL character will be returned, followed by a newline-
+    terminated string naming the key that was pressed.  This name is
+    the same as that found in curses.h with the "KEY_" prefix and any
+    embedded parentheses removed.  For example, the cursor right key
+    is "RIGHT", the Insert key is "IC", and the F4 function key is "F4".
 
   error
 
@@ -168,7 +184,7 @@ Pipe Commands:
     be used to specify formatting information.  For example, the following
     line could be used in a shell script:
 
-        echo eval a49-c53 "0.00"
+        echo eval a49-c53 \"0.00\"
 
     You can then read the result in from standard input.  If you want to
     know the number of the current column without having to convert the
@@ -234,15 +250,37 @@ Other Commands:
     the current row.
 
   pull
+  pullmerge
   pullrows
   pullcols
   pullxchg
   pulltp
+  pullfmt
+  pullcopy
 
-    These commands pull cells from the delete buffer into the current
-    location in the spreadsheet.  They perform the same actions as the
-    `pm' (pull), `pr' (pullrows), `pc' (pullcols), `px' (pullxchg), and
-    `pt' (pulltp) user commands.
+    These commands pull cells (or parts of cells in the case of the
+    pullfmt command) from the delete buffer into the current location
+    in the spreadsheet.  They perform the same actions as the `pp' (pull),
+    `pm' (pullmerge), `pr' (pullrows), `pc' (pullcols), `px' (pullxchg),
+    `pt' (pulltp), `pf' (pullfmt), and `pC' (pullcopy) user commands.
+
+  leftjustify
+  rightjustify
+  center
+
+    These commands are used to justify or center the string(s) in a cell
+    or range of cells.  With no argument, all strings in the currently
+    highlighted range, if one is highlighted, or the current cell, if not,
+    will be justified/centered.  Otherwise, a cell or range may be given
+    as a single argument, which will define which strings are to be
+    justified or centered.
+
+  select
+
+    This command takes a single string argument, whose first character
+    is used to select a named buffer to be used for the next insertion,
+    deletion, yank, or pull.  It is the same as the interactive `"'
+    command.
 
   recalc
 
@@ -365,4 +403,4 @@ in a man page.  In the meantime, enjoy the new capability, and send me any
 comments or suggestions for the next release.
 
 Chuck
-<cmartin@bigfoot.com>
+nrocinu@myrealbox.com

@@ -3,7 +3,7 @@
  * Mark Nagel <nagel@ics.uci.edu>
  * 20 July 1989
  *
- * $Revision: 7.13 $
+ * $Revision: 7.16 $
  *
  * bool
  * format(fmt, precision, num, buf, buflen)
@@ -147,8 +147,8 @@ format(char *fmt, int lprecision, double val, char *buf, int buflen)
  * select positive or negative format if necessary
  */
     for (cp = fmt; *cp != ';' && *cp != EOS; cp++) {
-    if (*cp == '\\')
-	cp++;
+	if (*cp == '\\')
+	    cp++;
     }
     if (*cp == ';') {
 	if (val < 0.0) {
@@ -193,6 +193,11 @@ format(char *fmt, int lprecision, double val, char *buf, int buflen)
     *tp = EOS;
     fmt = tmpfmt2;
 
+/* The following line was necessary due to problems with the gcc
+ * compiler and val being a negative zero.  Thanks to Mike Novack for
+ * the suggestion. - CRM
+ */
+    val = (val + 1.0) - 1.0;
     if (val < 0.0) {
   	negative = true;
 	val = -val;
@@ -253,11 +258,11 @@ format(char *fmt, int lprecision, double val, char *buf, int buflen)
     }
     (void) sprintf(prtfmt, "%%.%dlf", width);
     (void) sprintf(mantissa, prtfmt, val);
-    for (cp = integer = mantissa; *cp != '.' && *cp != EOS; cp++) {
+    for (cp = integer = mantissa; *cp != dpoint && *cp != EOS; cp++) {
 	if (*integer == '0')
 	    integer++;
     }
-    if (*cp == '.') {
+    if (*cp == dpoint) {
 	fraction = cp + 1;
 	*cp = EOS;
 	cp = fraction + strlen(fraction) - 1;
@@ -267,7 +272,8 @@ format(char *fmt, int lprecision, double val, char *buf, int buflen)
 	    else
 		break;
 	}
-    }
+    } else
+	fraction = "";
 
 /*
  * format the puppy
@@ -287,7 +293,7 @@ format(char *fmt, int lprecision, double val, char *buf, int buflen)
     }
     ci = strcpy(citmp, ci);
 
-    cf = (fraction) ? fmt_frac(fraction, decimal, lprecision) : "";
+    cf = decimal ? fmt_frac(fraction, decimal, lprecision) : "";
     len_cf = strlen(cf);
     if (len_cf >= cflen) {
     	cflen = len_cf + 40;
@@ -346,8 +352,9 @@ fmt_int(char *val,	/* integer part of the value to be formatted */
 	} else if (f >= 0 && (fmt[f] == '#' || fmt[f] == '0')) {
 	    if (v >= 0 || fmt[f] == '0') {
 		*bufptr++ = v < 0 ? '0' : val[v];
-		if (comma && (thousands = (thousands + 1) % 3) == 0 && v > 0)
-		    *bufptr++ = ',';
+		if (comma && (thousands = (thousands + 1) % 3) == 0 &&
+			v > 0 && thsep != '\0')
+		    *bufptr++ = thsep;
 		v--;
 	    }
 	} else if (f >= 0) {
@@ -378,27 +385,27 @@ fmt_frac(char *val,	/* fractional part of the value to be formatted */
     register char *bufptr = buf;
     register char *fmtptr = fmt, *valptr = val;
 
-    *bufptr++ = '.';
+    *bufptr++ = dpoint;
     while (*fmtptr != EOS) {
 	if (*fmtptr == '&') {
 	    int i;
 	    for (i = 0; i < lprecision; i++)
-		*bufptr++ = (*valptr != EOS) ? *valptr++ : *fmtptr;
+		*bufptr++ = (*valptr != EOS) ? *valptr++ : '0';
 	} else if (*fmtptr == '\\')
 	    *bufptr++ = *++fmtptr;
 	else if (*fmtptr == '#' || *fmtptr == '0') {
 	    if (*valptr != EOS || *fmtptr == '0')
-		*bufptr++ = (*valptr != EOS) ? *valptr++ : *fmtptr;
+		*bufptr++ = (*valptr != EOS) ? *valptr++ : '0';
 	} else
 	    *bufptr++ = *fmtptr;
 	fmtptr++;
     }
     *bufptr = EOS;
 
-    if (buf[1] == EOS)
-	buf[0] = EOS;
-
-    return (buf);
+    if (buf[1] < '0' || buf[1] > '9')
+	return (buf + 1);
+    else
+	return (buf);
 }
 
 /*****************************************************************************/
